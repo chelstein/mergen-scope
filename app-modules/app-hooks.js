@@ -96,6 +96,8 @@
   var parseMeasurementFile=PH.parseMeasurementFile||PH.parseImportedFile||PH.parseRSDat;
   var isAudioFileName=PH.isAudioFileName||function(name){return /\.(mp3|wav)$/i.test(String(name||""));};
   var parseAudioFile=PH.parseAudioFile;
+  var isSpecMaskFileName=PH.isSpecMaskFileName||function(name){return /\.mask\.json$/i.test(String(name||""));};
+  var parseSpecMaskJson=PH.parseSpecMaskJson;
   var IP3_ROLE_KEYS=MH.IP3_ROLE_KEYS;
   var IP3_ROLE_LABELS=MH.IP3_ROLE_LABELS;
   var isIP3Label=MH.isIP3Label;
@@ -599,7 +601,7 @@ function useFileStore(dep){
   var m0=files.length>0?files[0].meta:{};
 
   var loadFiles=useCallback(function(fl,append){
-    var arr=Array.from(fl).filter(function(f){return/\.(dat|csv|txt|s\d+p|mp3|wav)$/i.test(f.name);});
+    var arr=Array.from(fl).filter(function(f){return/\.(dat|csv|txt|s\d+p|mp3|wav)$/i.test(f.name)||isSpecMaskFileName(f.name);});
     if(!arr.length)return;
     var pending=arr.length,results=[];
     function handleParsed(parsed,file){
@@ -654,8 +656,14 @@ function useFileStore(dep){
     }
     arr.forEach(function(file){
       var isAudio=isAudioFileName(file.name);
+      var isMask=isSpecMaskFileName(file.name);
       if(isAudio&&typeof parseAudioFile!=="function"){
         setError(function(p){return(p?p+" | ":"")+file.name+": audio parsing is not available.";});
+        pending--;finalize();
+        return;
+      }
+      if(isMask&&typeof parseSpecMaskJson!=="function"){
+        setError(function(p){return(p?p+" | ":"")+file.name+": mask parsing is not available.";});
         pending--;finalize();
         return;
       }
@@ -665,6 +673,8 @@ function useFileStore(dep){
         try{
           promise=isAudio
             ?parseAudioFile(ev.target.result,file.name,dep.audioFftOptions)
+            :isMask
+            ?Promise.resolve(parseSpecMaskJson(ev.target.result,file.name))
             :Promise.resolve(parseMeasurementFile(ev.target.result,file.name));
         }catch(e){promise=Promise.reject(e);}
         promise.then(function(parsed){handleParsed(parsed,file);},function(e){
