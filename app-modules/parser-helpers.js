@@ -502,11 +502,97 @@
     }
   }
 
-  function parseAudioFile(arrayBuffer,fileName){
+  var AUDIO_WINDOWS={
+    rectangular:{label:"Rectangular",fn:function(N){var w=new Float32Array(N);for(var i=0;i<N;i++)w[i]=1;return w;}},
+    hann:{label:"Hann",fn:function(N){var w=new Float32Array(N);for(var i=0;i<N;i++)w[i]=0.5*(1-Math.cos(2*Math.PI*i/(N-1)));return w;}},
+    hamming:{label:"Hamming",fn:function(N){var w=new Float32Array(N);for(var i=0;i<N;i++)w[i]=0.54-0.46*Math.cos(2*Math.PI*i/(N-1));return w;}},
+    blackman:{label:"Blackman",fn:function(N){var w=new Float32Array(N);for(var i=0;i<N;i++){var t=2*Math.PI*i/(N-1);w[i]=0.42-0.5*Math.cos(t)+0.08*Math.cos(2*t);}return w;}},
+    blackmanharris:{label:"Blackman-Harris",fn:function(N){var a=[0.35875,-0.48829,0.14128,-0.01168];var w=new Float32Array(N);for(var i=0;i<N;i++){var t=2*Math.PI*i/(N-1);w[i]=a[0]+a[1]*Math.cos(t)+a[2]*Math.cos(2*t)+a[3]*Math.cos(3*t);}return w;}},
+    flattop:{label:"Flat-top",fn:function(N){var a=[0.21557895,-0.41663158,0.277263158,-0.083578947,0.006947368];var w=new Float32Array(N);for(var i=0;i<N;i++){var t=2*Math.PI*i/(N-1);w[i]=a[0]+a[1]*Math.cos(t)+a[2]*Math.cos(2*t)+a[3]*Math.cos(3*t)+a[4]*Math.cos(4*t);}return w;}}
+  };
+  var AUDIO_FFT_SIZES=[256,512,1024,2048,4096,8192,16384,32768];
+  var AUDIO_DEFAULT_OPTIONS={fftSize:8192,window:"hann",overlap:0.5,channel:"auto"};
+
+  function normalizeAudioFftOptions(options){
+    var opts=Object.assign({},AUDIO_DEFAULT_OPTIONS,options||{});
+    var size=Number(opts.fftSize);
+    if(!isFinite(size))size=AUDIO_DEFAULT_OPTIONS.fftSize;
+    var pow=1;while(pow*2<=size)pow<<=1;
+    if(pow<256)pow=256;
+    if(pow>32768)pow=32768;
+    opts.fftSize=pow;
+    if(!AUDIO_WINDOWS[opts.window])opts.window=AUDIO_DEFAULT_OPTIONS.window;
+    var ov=Number(opts.overlap);
+    if(!isFinite(ov))ov=AUDIO_DEFAULT_OPTIONS.overlap;
+    opts.overlap=Math.min(0.95,Math.max(0,ov));
+    if(opts.channel!=="auto"&&!isFinite(Number(opts.channel))){
+      opts.channel=AUDIO_DEFAULT_OPTIONS.channel;
+    }
+    return opts;
+  }
+
+  function selectAudioChannelSamples(channels,channelOption){
+    if(!channels||!channels.length)return new Float32Array(0);
+    if(channelOption!=="auto"){
+      var idx=Math.max(0,Math.min(channels.length-1,parseInt(channelOption,10)||0));
+      return channels[idx];
+    }
+    if(channels.length===1)return channels[0];
+    var len=channels[0].length;
+    var mono=new Float32Array(len);
+    for(var c=0;c<channels.length;c++){
+      var src=channels[c];
+      for(var i=0;i<len;i++)mono[i]+=src[i];
+    }
+    for(var k=0;k<len;k++)mono[k]/=channels.length;
+    return mono;
+  }
+
+  function computeAudioFftTrace(samples,sampleRate,opts){
+    opts=normalizeAudioFftOptions(opts);
+    var len=samples.length;
+    if(!len)throw new Error("Audio file contains no samples.");
+    var N=Math.min(opts.fftSize,1);
+    while(N*2<=opts.fftSize)N<<=1;
+    while(N>len)N>>=1;
+    if(N<256)throw new Error("Audio is too short for the requested FFT size.");
+    var hop=Math.max(1,Math.floor(N*(1-opts.overlap)));
+    var winFn=(AUDIO_WINDOWS[opts.window]||AUDIO_WINDOWS.hann).fn;
+    var win=winFn(N);
+    var winSum=0;for(var w=0;w<N;w++)winSum+=win[w];
+    var halfBins=N>>1;
+    var sum=new Float64Array(halfBins+1);
+    var re=new Float64Array(N);
+    var im=new Float64Array(N);
+    var frames=0;
+    for(var start=0;start+N<=len;start+=hop){
+      for(var s=0;s<N;s++){re[s]=samples[start+s]*win[s];im[s]=0;}
+      radix2FFT(re,im);
+      for(var b=0;b<=halfBins;b++)sum[b]+=Math.sqrt(re[b]*re[b]+im[b]*im[b]);
+      frames++;
+    }
+    if(!frames){
+      for(var z=0;z<N;z++){re[z]=z<len?samples[z]*win[z]:0;im[z]=0;}
+      radix2FFT(re,im);
+      for(var b2=0;b2<=halfBins;b2++)sum[b2]=Math.sqrt(re[b2]*re[b2]+im[b2]*im[b2]);
+      frames=1;
+    }
+    var data=[];
+    for(var b3=0;b3<=halfBins;b3++){
+      var avg=sum[b3]/frames;
+      var scale=(b3===0||b3===halfBins)?1:2;
+      var amp=(avg/winSum)*scale;
+      data.push({freq:b3*sampleRate/N,amp:20*Math.log10(amp+1e-12)});
+    }
+    return {data:data,fftSize:N,frames:frames,hop:hop};
+  }
+
+  function parseAudioFile(arrayBuffer,fileName,options){
     _fc++;
     var fc=_fc;
     var ACtor=global.AudioContext||global.webkitAudioContext;
     if(!ACtor)return Promise.reject(new Error("Web Audio API is not available in this browser."));
+    var opts=normalizeAudioFftOptions(options);
     var ctx=new ACtor();
     var bufferCopy=arrayBuffer.slice(0);
     return new Promise(function(resolve,reject){
@@ -520,57 +606,27 @@
     }).then(function(buffer){
       try{ctx.close();}catch(_){}
       var sr=buffer.sampleRate;
-      var len=buffer.length;
       var ch=buffer.numberOfChannels||1;
-      if(!len)throw new Error("Audio file contains no samples.");
-      var mono=new Float32Array(len);
-      for(var c=0;c<ch;c++){
-        var src=buffer.getChannelData(c);
-        for(var i=0;i<len;i++)mono[i]+=src[i];
-      }
-      if(ch>1)for(var k=0;k<len;k++)mono[k]/=ch;
-      var N=8192;
-      while(N>len)N>>=1;
-      if(N<256)throw new Error("Audio file is too short to analyze.");
-      var hop=N>>1;
-      var hann=new Float32Array(N);
-      for(var n=0;n<N;n++)hann[n]=0.5*(1-Math.cos(2*Math.PI*n/(N-1)));
-      var winSum=0;for(var w=0;w<N;w++)winSum+=hann[w];
-      var halfBins=N>>1;
-      var sum=new Float64Array(halfBins+1);
-      var re=new Float64Array(N);
-      var im=new Float64Array(N);
-      var frames=0;
-      for(var start=0;start+N<=len;start+=hop){
-        for(var s=0;s<N;s++){re[s]=mono[start+s]*hann[s];im[s]=0;}
-        radix2FFT(re,im);
-        for(var b=0;b<=halfBins;b++)sum[b]+=Math.sqrt(re[b]*re[b]+im[b]*im[b]);
-        frames++;
-      }
-      if(!frames){
-        for(var z=0;z<N;z++){re[z]=z<len?mono[z]*hann[z]:0;im[z]=0;}
-        radix2FFT(re,im);
-        for(var b2=0;b2<=halfBins;b2++)sum[b2]=Math.sqrt(re[b2]*re[b2]+im[b2]*im[b2]);
-        frames=1;
-      }
-      var data=[];
-      for(var b3=0;b3<=halfBins;b3++){
-        var avg=sum[b3]/frames;
-        var scale=(b3===0||b3===halfBins)?1:2;
-        var amp=(avg/winSum)*scale;
-        data.push({freq:b3*sr/N,amp:20*Math.log10(amp+1e-12)});
-      }
+      var channels=[];
+      for(var c=0;c<ch;c++)channels.push(buffer.getChannelData(c).slice(0));
+      var samples=selectAudioChannelSamples(channels,opts.channel);
+      var result=computeAudioFftTrace(samples,sr,opts);
       var prefix=String(fileName||"audio").replace(/^.*[\\/]/,"").replace(/\.[^.]+$/,"")+" ";
-      var trace=makeTrace(prefix,fileName,"FFT",fc);
-      trace.data=normalizeTraceData(data);
+      var label="FFT";
+      if(opts.channel!=="auto")label="FFT_ch"+(parseInt(opts.channel,10)||0);
+      var trace=makeTrace(prefix,fileName,label,fc);
+      trace.data=normalizeTraceData(result.data);
       trace.units={x:"Hz",y:"dBFS"};
       var meta={
         "Format":"Audio",
         "Sample Rate":{value:sr,unit:"Hz"},
         "Channels":ch,
-        "Sample Count":len,
-        "FFT Size":N,
-        "Frames Averaged":frames
+        "Channel":opts.channel==="auto"?"mono mix":("ch "+(parseInt(opts.channel,10)||0)),
+        "Sample Count":samples.length,
+        "FFT Size":result.fftSize,
+        "Window":(AUDIO_WINDOWS[opts.window]&&AUDIO_WINDOWS[opts.window].label)||opts.window,
+        "Overlap":Math.round(opts.overlap*100)+"%",
+        "Frames Averaged":result.frames
       };
       return {format:"audio",meta:meta,traces:[trace]};
     });
@@ -590,6 +646,10 @@
     parseImportedFile:parseImportedFile,
     parseMeasurementFile:parseMeasurementFile,
     isAudioFileName:isAudioFileName,
-    parseAudioFile:parseAudioFile
+    parseAudioFile:parseAudioFile,
+    AUDIO_WINDOWS:AUDIO_WINDOWS,
+    AUDIO_FFT_SIZES:AUDIO_FFT_SIZES,
+    AUDIO_DEFAULT_OPTIONS:AUDIO_DEFAULT_OPTIONS,
+    normalizeAudioFftOptions:normalizeAudioFftOptions
   };
 })(window);
