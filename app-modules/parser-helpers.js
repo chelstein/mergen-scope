@@ -587,6 +587,100 @@
     return {data:data,fftSize:N,frames:frames,hop:hop};
   }
 
+  function aWeightDb(f){
+    if(!isFinite(f)||f<=0)return -120;
+    var f2=f*f;
+    var num=12194*12194*f2*f2;
+    var den=(f2+20.6*20.6)*Math.sqrt((f2+107.7*107.7)*(f2+737.9*737.9))*(f2+12194*12194);
+    return 20*Math.log10(num/den)+2.0;
+  }
+
+  function cWeightDb(f){
+    if(!isFinite(f)||f<=0)return -120;
+    var f2=f*f;
+    var num=12194*12194*f2;
+    var den=(f2+20.6*20.6)*(f2+12194*12194);
+    return 20*Math.log10(num/den)+0.062;
+  }
+
+  function computeAudioMetrics(samples,sampleRate,fftSeries){
+    var n=samples.length;
+    if(!n)return null;
+    var peak=0,rmsSq=0;
+    for(var i=0;i<n;i++){
+      var x=samples[i];
+      var a=x<0?-x:x;
+      if(a>peak)peak=a;
+      rmsSq+=x*x;
+    }
+    var rms=Math.sqrt(rmsSq/n);
+    var peakDbFs=20*Math.log10(peak||1e-12);
+    var rmsDbFs=20*Math.log10(rms||1e-12);
+    var crestDb=peakDbFs-rmsDbFs;
+    var spec=[];
+    var totalPwr=0;
+    var data=fftSeries&&fftSeries.data?fftSeries.data:[];
+    for(var k=0;k<data.length;k++){
+      var lin=Math.pow(10,Number(data[k].amp)/20);
+      var pwr=lin*lin;
+      spec.push({freq:Number(data[k].freq),pwr:pwr});
+      totalPwr+=pwr;
+    }
+    var fund=null,fundIdx=-1;
+    for(var b=1;b<spec.length;b++){
+      if(!fund||spec[b].pwr>fund.pwr){fund=spec[b];fundIdx=b;}
+    }
+    var fundamentalHz=fund?fund.freq:null;
+    var thdNPercent=null;
+    if(fund&&totalPwr>0){
+      var notch=Math.max(30,fundamentalHz*0.02);
+      var resid=0;
+      for(var c=0;c<spec.length;c++){
+        if(Math.abs(spec[c].freq-fundamentalHz)>notch)resid+=spec[c].pwr;
+      }
+      thdNPercent=Math.sqrt(resid/totalPwr)*100;
+    }
+    var snrDb=null;
+    if(spec.length>=20){
+      var sorted=spec.slice().sort(function(a,b){return b.pwr-a.pwr;});
+      var topN=Math.max(1,Math.floor(sorted.length*0.01));
+      var top=sorted.slice(0,topN);
+      var bot=sorted.slice(Math.floor(sorted.length*0.5));
+      var topMean=0;for(var t=0;t<top.length;t++)topMean+=top[t].pwr;topMean/=top.length;
+      var botMean=0;for(var u=0;u<bot.length;u++)botMean+=bot[u].pwr;botMean/=bot.length;
+      if(botMean>0)snrDb=10*Math.log10(topMean/botMean);
+    }
+    function weightedRmsDb(weightFn){
+      if(!totalPwr)return null;
+      var weighted=0;
+      for(var w=0;w<spec.length;w++){
+        var g=Math.pow(10,weightFn(spec[w].freq)/20);
+        weighted+=spec[w].pwr*g*g;
+      }
+      var ratio=weighted/totalPwr;
+      if(!isFinite(ratio)||ratio<=0)return null;
+      return rmsDbFs+10*Math.log10(ratio);
+    }
+    return {
+      peakDbFs:peakDbFs,
+      rmsDbFs:rmsDbFs,
+      crestDb:crestDb,
+      aRmsDbFs:weightedRmsDb(aWeightDb),
+      cRmsDbFs:weightedRmsDb(cWeightDb),
+      fundamentalHz:fundamentalHz,
+      thdNPercent:thdNPercent,
+      snrDb:snrDb,
+      fundIdx:fundIdx
+    };
+  }
+
+  function formatHz(hz){
+    if(hz==null||!isFinite(hz))return null;
+    if(hz>=1e6)return (hz/1e6).toFixed(3)+" MHz";
+    if(hz>=1e3)return (hz/1e3).toFixed(3)+" kHz";
+    return hz.toFixed(1)+" Hz";
+  }
+
   function parseAudioFile(arrayBuffer,fileName,options){
     _fc++;
     var fc=_fc;
@@ -617,6 +711,8 @@
       var trace=makeTrace(prefix,fileName,label,fc);
       trace.data=normalizeTraceData(result.data);
       trace.units={x:"Hz",y:"dBFS"};
+      var metrics=null;
+      try{metrics=computeAudioMetrics(samples,sr,result);}catch(_){metrics=null;}
       var meta={
         "Format":"Audio",
         "Sample Rate":{value:sr,unit:"Hz"},
@@ -628,6 +724,16 @@
         "Overlap":Math.round(opts.overlap*100)+"%",
         "Frames Averaged":result.frames
       };
+      if(metrics){
+        meta["Peak"]=metrics.peakDbFs.toFixed(2)+" dBFS";
+        meta["RMS"]=metrics.rmsDbFs.toFixed(2)+" dBFS";
+        meta["Crest Factor"]=metrics.crestDb.toFixed(2)+" dB";
+        if(metrics.aRmsDbFs!=null)meta["A-weighted RMS"]=metrics.aRmsDbFs.toFixed(2)+" dBFS(A)";
+        if(metrics.cRmsDbFs!=null)meta["C-weighted RMS"]=metrics.cRmsDbFs.toFixed(2)+" dBFS(C)";
+        if(metrics.fundamentalHz!=null)meta["Fundamental"]=formatHz(metrics.fundamentalHz);
+        if(metrics.thdNPercent!=null)meta["THD+N"]=metrics.thdNPercent.toFixed(3)+" %";
+        if(metrics.snrDb!=null)meta["SNR (est.)"]=metrics.snrDb.toFixed(1)+" dB";
+      }
       return {format:"audio",meta:meta,traces:[trace]};
     });
   }
