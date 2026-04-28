@@ -1123,8 +1123,34 @@
         h(Btn,{soft:true,color:C.tr&&C.tr[1],title:"Export raw traces, derived traces, markers, reference lines, current analysis traces, saved analysis results, and Touchstone-backed derived views as JSON.",onClick:p.exportTraceData||p.exportData,disabled:!hasData},"Export JSON"),
         h(Btn,{soft:true,color:(C.tr&&C.tr[5])||C.accent,title:"Export the current chart view as a higher-resolution PNG image.",onClick:p.exportChartPng,disabled:!hasData},"PNG"),
         h(Btn,{soft:true,color:C.refV,title:"Export the current chart view as a pure-graph SVG image.",onClick:p.exportChartSvg,disabled:!hasData},"SVG"),
+        p.exportChartCsv?h(Btn,{soft:true,color:(C.tr&&C.tr[3])||C.accent,title:"Export the active pane's visible traces as a long-format CSV (trace,freq,amp).",onClick:p.exportChartCsv,disabled:!hasData},"CSV"):null,
         p.shareWorkspaceLink?h(Btn,{soft:true,color:C.accent,title:"Build a self-contained share URL with the current workspace state and copy it to the clipboard. Recipients can open the link to load this workspace.",onClick:p.shareWorkspaceLink,disabled:!hasData},"Share Link"):null
       ),
+      p.setAudioFftOptions?h("div",{style:{border:"1px solid var(--border)",borderRadius:6,padding:"6px 8px",display:"flex",flexDirection:"column",gap:4,background:"var(--card)"}},
+        h("div",{style:{fontSize:10,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"var(--muted)"}},"Audio FFT · applied on next import"),
+        h("div",{style:{display:"grid",gridTemplateColumns:"auto 1fr",gap:"4px 8px",fontSize:11,alignItems:"center"}},
+          h("label",{htmlFor:"audio-fft-size",style:{color:"var(--muted)"}},"Size"),
+          h("select",{id:"audio-fft-size",value:String((p.audioFftOptions&&p.audioFftOptions.fftSize)||8192),onChange:function(ev){p.setAudioFftOptions(Object.assign({},p.audioFftOptions,{fftSize:parseInt(ev.target.value,10)}));},style:{fontSize:11,padding:"2px 4px",background:"var(--bg)",color:"var(--text)",border:"1px solid var(--border)",borderRadius:4}},
+            (p.audioFftSizes&&p.audioFftSizes.length?p.audioFftSizes:[256,512,1024,2048,4096,8192,16384,32768]).map(function(n){return h("option",{key:n,value:String(n)},String(n));})
+          ),
+          h("label",{htmlFor:"audio-fft-window",style:{color:"var(--muted)"}},"Window"),
+          h("select",{id:"audio-fft-window",value:(p.audioFftOptions&&p.audioFftOptions.window)||"hann",onChange:function(ev){p.setAudioFftOptions(Object.assign({},p.audioFftOptions,{window:ev.target.value}));},style:{fontSize:11,padding:"2px 4px",background:"var(--bg)",color:"var(--text)",border:"1px solid var(--border)",borderRadius:4}},
+            Object.keys(p.audioFftWindows||{hann:{label:"Hann"}}).map(function(key){return h("option",{key:key,value:key},(p.audioFftWindows&&p.audioFftWindows[key]&&p.audioFftWindows[key].label)||key);})
+          ),
+          h("label",{htmlFor:"audio-fft-overlap",style:{color:"var(--muted)"}},"Overlap"),
+          h("select",{id:"audio-fft-overlap",value:String(Math.round(((p.audioFftOptions&&p.audioFftOptions.overlap)||0.5)*100)),onChange:function(ev){p.setAudioFftOptions(Object.assign({},p.audioFftOptions,{overlap:parseInt(ev.target.value,10)/100}));},style:{fontSize:11,padding:"2px 4px",background:"var(--bg)",color:"var(--text)",border:"1px solid var(--border)",borderRadius:4}},
+            ["0","25","50","75","87"].map(function(v){return h("option",{key:v,value:v},v+"%");})
+          ),
+          h("label",{htmlFor:"audio-fft-channel",style:{color:"var(--muted)"}},"Channel"),
+          h("select",{id:"audio-fft-channel",value:String((p.audioFftOptions&&p.audioFftOptions.channel)||"auto"),onChange:function(ev){p.setAudioFftOptions(Object.assign({},p.audioFftOptions,{channel:ev.target.value==="auto"?"auto":parseInt(ev.target.value,10)}));},style:{fontSize:11,padding:"2px 4px",background:"var(--bg)",color:"var(--text)",border:"1px solid var(--border)",borderRadius:4}},
+            h("option",{key:"auto",value:"auto"},"Auto (mono mix)"),
+            h("option",{key:"0",value:"0"},"Channel 0"),
+            h("option",{key:"1",value:"1"},"Channel 1"),
+            h("option",{key:"2",value:"2"},"Channel 2"),
+            h("option",{key:"3",value:"3"},"Channel 3")
+          )
+        )
+      ):null,
       h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
         h("button",{className:"clr-btn",title:"Remove all imported files, traces, markers, and analysis results from the current workspace.",onClick:function(){if(hasData&&window.confirm("Clear all files and traces?")&&p.clearAllFiles)p.clearAllFiles();},disabled:!hasData,style:{background:"transparent",border:"1px solid var(--border)",color:"var(--muted)",borderRadius:6,padding:"6px 10px",cursor:hasData?"pointer":"not-allowed",fontSize:12,fontWeight:500,whiteSpace:"nowrap",lineHeight:"1.4",opacity:hasData?1:0.45,width:"100%"}},"Clear Workspace")
       ),

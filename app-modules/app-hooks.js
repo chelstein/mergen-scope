@@ -664,7 +664,7 @@ function useFileStore(dep){
         var promise;
         try{
           promise=isAudio
-            ?parseAudioFile(ev.target.result,file.name)
+            ?parseAudioFile(ev.target.result,file.name,dep.audioFftOptions)
             :Promise.resolve(parseMeasurementFile(ev.target.result,file.name));
         }catch(e){promise=Promise.reject(e);}
         promise.then(function(parsed){handleParsed(parsed,file);},function(e){
