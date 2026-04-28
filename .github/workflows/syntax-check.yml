@@ -1,0 +1,66 @@
+name: Syntax Check
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  js-syntax:
+    name: JS syntax (node --check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Check every .js under app-modules
+        run: |
+          set -e
+          fail=0
+          for f in $(find app-modules -name '*.js' -type f); do
+            if ! node --check "$f"; then
+              echo "::error file=$f::syntax error"
+              fail=1
+            fi
+          done
+          exit $fail
+
+  html-parse:
+    name: HTML parses cleanly
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Parse top-level HTML files
+        run: |
+          python3 - <<'PY'
+          import html.parser, sys, pathlib
+          class P(html.parser.HTMLParser):
+              def __init__(self):
+                  super().__init__(convert_charrefs=False)
+                  self.errors = []
+              def error(self, msg):
+                  self.errors.append(msg)
+          fail = False
+          for path in ["index.html", "mergen_scope.html"]:
+              p = P()
+              text = pathlib.Path(path).read_text(encoding="utf-8")
+              try:
+                  p.feed(text)
+                  p.close()
+              except Exception as exc:
+                  print(f"::error file={path}::{exc}")
+                  fail = True
+                  continue
+              if p.errors:
+                  for err in p.errors:
+                      print(f"::error file={path}::{err}")
+                  fail = True
+              else:
+                  print(f"{path}: OK")
+          sys.exit(1 if fail else 0)
+          PY
