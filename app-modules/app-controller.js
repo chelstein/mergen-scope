@@ -1380,6 +1380,30 @@ function useAppController(){
       setError("Unable to export trace data: "+(err&&err.message?err.message:"Unknown error."));
     }
   }
+  function exportChartCsv(){
+    try{
+      if(typeof buildPaneCsv!=="function"){
+        setError("CSV export is not available in this build.");
+        return;
+      }
+      var activePane=(panes||[]).find(function(pane){return pane.id===activePaneId;})||null;
+      var built=buildPaneCsv({
+        traces:allTr,
+        vis:vis,
+        paneId:activePaneId,
+        paneTitle:activePane?activePane.title:null,
+        tracePaneMap:tracePaneMap
+      });
+      if(!built){
+        setError("No visible traces in the active pane to export.");
+        return;
+      }
+      downloadBlobFile(new Blob([built.csv],{type:"text/csv;charset=utf-8"}),buildTimestampedDownloadName("mergen-scope-pane","csv"));
+      setError(null);
+    }catch(err){
+      setError("Unable to export CSV: "+(err&&err.message?err.message:"Unknown error."));
+    }
+  }
   function exportChartSvg(){
     try{
       var exportAsset=buildChartVectorExport({kind:"svg"});
