@@ -6,20 +6,20 @@
 
 <title>Mergen Scope - Free Online RF and Signal File Viewer</title>
 
-<meta name="description" content="Mergen Scope is a free browser-based RF and signal file viewer for DAT, CSV, and Touchstone files. View spectrum analyzer exports, waveform-style data, and S-parameters online with markers, trace math, RF analysis tools, and multi-pane comparison. No installation required.">
-<meta name="keywords" content="RF file viewer, signal file viewer, spectrum viewer, spectrum analyzer viewer, Touchstone viewer, S-parameter viewer, s1p viewer, s2p viewer, csv file viewer, dat file viewer, online RF viewer, online spectrum viewer, RF analysis tool, trace math, multi-pane comparison, frequency response viewer, Mergen Scope">
+<meta name="description" content="Mergen Scope is a free browser-based RF and signal file viewer for DAT, CSV, Touchstone, and audio files. View spectrum analyzer exports, waveform data, S-parameters, and audio FFT online with markers, trace math, RF analysis tools, and multi-pane comparison. No installation required.">
+<meta name="keywords" content="RF file viewer, signal file viewer, spectrum viewer, spectrum analyzer viewer, Touchstone viewer, S-parameter viewer, s1p viewer, s2p viewer, csv file viewer, dat file viewer, audio FFT viewer, online RF viewer, RF analysis tool, trace math, multi-pane comparison, frequency response viewer, Mergen Scope">
 <meta name="author" content="Alp Gokalp">
 <meta name="robots" content="index, follow">
 
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://alpgoxd.github.io/mergen-scope/">
 <meta property="og:title" content="Mergen Scope - Free Online RF and Signal File Viewer">
-<meta property="og:description" content="Free browser-based RF and signal file viewer with markers, trace math, RF analysis tools, and multi-pane comparison. Open DAT, CSV, and Touchstone files online.">
+<meta property="og:description" content="Free browser-based RF and signal file viewer with markers, trace math, RF analysis tools, and multi-pane comparison. Open DAT, CSV, Touchstone, and audio files online.">
 <meta property="og:image" content="https://alpgoxd.github.io/mergen-scope/mergen-scope-preview.png">
 
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Mergen Scope - Free Online RF and Signal File Viewer">
-<meta name="twitter:description" content="Open DAT, CSV, and Touchstone files online with markers, trace math, RF analysis, and multi-pane comparison.">
+<meta name="twitter:description" content="Open DAT, CSV, Touchstone, and audio files online with markers, trace math, RF analysis, and multi-pane comparison.">
 
 <link rel="canonical" href="https://alpgoxd.github.io/mergen-scope/">
 <link rel="sitemap" href="https://alpgoxd.github.io/mergen-scope/sitemap.xml">
@@ -29,608 +29,567 @@
 <link rel="apple-touch-icon" href="mergen-scope-icon.png?v=1">
 <meta name="google-site-verification" content="O64Z7BHiqB2rKy5Zhtj1gvyn-18y4eWPYjP9-bYTFmg">
 
-  <style>
-    :root {
-      color-scheme: light dark;
-      --mx: 0;
-      --my: 0;
-      --bg: #ffffff;
-      --surface: #f6f8fa;
-      --border: #d1d9e0;
-      --text: #1f2328;
-      --muted: #656d76;
-      --accent: #0969da;
-      --accent2: #1a7f37;
-      --btn: #0969da;
-      --btn-h: #0550ae;
-      --github-mark: #24292f;
-      --github-surface: rgba(36, 41, 47, 0.08);
-    }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #0d1117;
-        --surface: #161b22;
-        --border: #30363d;
-        --text: #e6edf3;
-        --muted: #8b949e;
-        --accent: #58a6ff;
-        --accent2: #3fb950;
-        --btn: #238636;
-        --btn-h: #2ea043;
-        --github-mark: #f0f6fc;
-        --github-surface: rgba(240, 246, 252, 0.08);
-      }
-    }
+<style>
+  :root {
+    --bg:                #efe2c7;
+    --bg-raised:         #f4e6ca;
+    --panel:             #f8ecd2;
+    --panel-strong:      #fff4de;
 
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    --text:              #1b2430;
+    --text-secondary:    #435064;
+    --text-muted:        #6e7687;
+    --text-on-accent:    #fff4de;
 
-    html, body {
-      min-height: 100%;
-    }
+    --border:            #2a3340;
+    --border-soft:       #c8b999;
+    --divider:           #b8a884;
 
-    body {
-      position: relative;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background:
-        radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 10%, transparent), transparent 28%),
-        radial-gradient(circle at top right, color-mix(in srgb, var(--accent2) 12%, transparent), transparent 24%),
-        linear-gradient(180deg, color-mix(in srgb, var(--bg) 8%, transparent), var(--bg));
-      color: var(--text);
-      line-height: 1.6;
-      overflow-x: hidden;
-    }
-    .page-bg {
-      position: fixed;
-      inset: 0;
-      z-index: 0;
-      pointer-events: none;
-      overflow: hidden;
-    }
-    .page-bg svg {
-      width: 100%;
-      height: 100%;
-      display: block;
-      opacity: 0.9;
-    }
-    .bg-parallax-1,
-    .bg-parallax-2,
-    .bg-parallax-3 {
-      transform-box: fill-box;
-      transform-origin: center;
-      will-change: transform;
-    }
-    .bg-parallax-1 {
-      transform: translate(calc(var(--mx) * 10px), calc(var(--my) * 10px));
-    }
-    .bg-parallax-2 {
-      transform: translate(calc(var(--mx) * -14px), calc(var(--my) * 12px));
-    }
-    .bg-parallax-3 {
-      transform: translate(calc(var(--mx) * 18px), calc(var(--my) * -16px));
-    }
-    .bg-grid-line {
-      stroke: color-mix(in srgb, var(--border) 55%, transparent);
-      stroke-width: 1;
-      stroke-dasharray: 2 10;
-      opacity: 0.35;
-    }
-    .bg-wave-1,
-    .bg-wave-2,
-    .bg-wave-3,
-    .bg-wave-4,
-    .bg-wave-5 {
-      fill: none;
-      stroke-linecap: round;
-      stroke-linejoin: round;
-      stroke-width: 2.4;
-    }
-    .bg-wave-1 { stroke: color-mix(in srgb, var(--accent) 72%, white); opacity: 0.82; }
-    .bg-wave-2 { stroke: color-mix(in srgb, #ff7a59 72%, white); opacity: 0.78; }
-    .bg-wave-3 { stroke: color-mix(in srgb, var(--accent2) 72%, white); opacity: 0.72; }
-    .bg-wave-4 { stroke: color-mix(in srgb, #9b6dff 70%, white); opacity: 0.66; }
-    .bg-wave-5 { stroke: color-mix(in srgb, #00a6a6 68%, white); opacity: 0.58; }
-    .bg-wave-slow {
-      animation: driftSlow 18s ease-in-out infinite alternate;
-    }
-    .bg-wave-mid {
-      animation: driftMid 14s ease-in-out infinite alternate;
-    }
-    .bg-wave-fast {
-      animation: driftFast 11s ease-in-out infinite alternate;
-    }
-    @keyframes driftSlow {
-      from { transform: translate3d(-10px, 6px, 0) scale(1.01); }
-      to { transform: translate3d(14px, -8px, 0) scale(1.04); }
-    }
-    @keyframes driftMid {
-      from { transform: translate3d(8px, -10px, 0) scale(1.02); }
-      to { transform: translate3d(-14px, 10px, 0) scale(1.05); }
-    }
-    @keyframes driftFast {
-      from { transform: translate3d(-16px, 10px, 0) scale(1.01); }
-      to { transform: translate3d(18px, -12px, 0) scale(1.06); }
-    }
-    @media (prefers-reduced-motion: reduce) {
-      .bg-wave-slow,
-      .bg-wave-mid,
-      .bg-wave-fast {
-        animation: none;
-      }
-      .bg-parallax-1,
-      .bg-parallax-2,
-      .bg-parallax-3 {
-        transform: none;
-      }
-    }
+    --accent:            #0f7c7b;
+    --accent-hover:      #0d6767;
+    --accent-active:     #0b5354;
+    --accent-deep:       #083f40;
+    --accent-pale:       #d5ece8;
 
-    .page {
-      position: relative;
-      z-index: 1;
-      max-width: 1120px;
-      margin: 2rem auto;
-      padding: 4rem 2rem 3rem;
-      border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
-      border-radius: 30px;
-      background-color: color-mix(in srgb, var(--bg) 46%, transparent);
-      background-image: linear-gradient(180deg, color-mix(in srgb, var(--surface) 30%, transparent), color-mix(in srgb, var(--bg) 50%, transparent));
-      box-shadow:
-        0 28px 80px color-mix(in srgb, var(--text) 10%, transparent),
-        inset 0 1px 0 color-mix(in srgb, #ffffff 18%, transparent);
-      backdrop-filter: blur(14px) saturate(1.06);
-    }
-    /* Hero */
-    .hero {
-      padding: 1.25rem 0;
-      margin-bottom: 2.5rem;
-    }
-    .hero-grid {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 1rem;
-      align-items: center;
-    }
-    .hero-copy {
-      position: relative;
-      z-index: 1;
-      padding: 1.25rem 1.5rem;
-      max-width: 760px;
-      margin: 0 auto;
-      text-align: center;
-    }
-    .hero-label {
-      font-size: 0.8rem;
-      font-weight: 600;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      color: var(--muted);
-      margin-bottom: 0.75rem;
-    }
-    .hero-brand {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin-bottom: 1rem;
-    }
-    .hero-brand-mark {
-      width: 56px;
-      height: 56px;
-      border-radius: 16px;
-      border: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
-      background: var(--github-surface);
-      box-shadow: 0 14px 34px color-mix(in srgb, var(--text) 10%, transparent);
-      backdrop-filter: blur(12px);
-      display: grid;
-      place-items: center;
-      color: var(--github-mark);
-    }
-    .hero-brand-svg {
-      width: 34px;
-      height: 34px;
-      display: block;
-    }
-    .hero h1 {
-      font-size: 3rem;
-      font-weight: 700;
-      letter-spacing: -0.02em;
-      color: var(--text);
-      line-height: 1.1;
-      margin-bottom: 1rem;
-    }
-    .hero p {
-      font-size: 1.15rem;
-      color: var(--muted);
-      max-width: 620px;
-      margin: 0 auto 1.75rem;
-    }
-    .hero-actions {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 1rem;
-      flex-wrap: wrap;
-      margin-bottom: 1.15rem;
-    }
-    .hero-actions-bottom {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0.9rem;
-      flex-wrap: wrap;
-      margin-top: 0.15rem;
-    }
-    .hero-status {
-      display: none;
-    }
-    .hero-badges {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: center;
-      gap: 0.5rem;
-      margin: 1.15rem 0 1.4rem;
-    }
-    .hero-badge {
-      border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
-      background: color-mix(in srgb, var(--surface) 88%, transparent);
-      color: var(--text);
-      padding: 0.35rem 0.7rem;
-      border-radius: 999px;
-      font-size: 0.8rem;
-      font-weight: 600;
-    }
-    .btn-primary {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      background: var(--btn);
-      color: #fff;
-      min-width: 220px;
-      padding: 0.95rem 2rem;
-      border-radius: 999px;
-      text-decoration: none;
-      font-weight: 700;
-      font-size: 1.05rem;
-      letter-spacing: 0.01em;
-      transition: background 0.15s, transform 0.15s, box-shadow 0.15s;
-      box-shadow: 0 14px 30px color-mix(in srgb, var(--btn) 26%, transparent);
-    }
-    .btn-primary:hover {
-      background: var(--btn-h);
-      transform: translateY(-1px);
-    }
-    .btn-demo {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      background: var(--accent2);
-      color: #fff;
-      padding: 0.7rem 1.35rem;
-      border-radius: 999px;
-      text-decoration: none;
-      font-weight: 600;
-      font-size: 0.95rem;
-      transition: filter 0.15s, transform 0.15s;
-    }
-    .btn-demo:hover {
-      filter: brightness(0.95);
-      transform: translateY(-1px);
-    }
-    .btn-secondary {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0.55rem;
-      flex-wrap: wrap;
-      color: var(--github-mark);
-      background: color-mix(in srgb, var(--bg) 68%, transparent);
-      border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
-      padding: 0.7rem 1.35rem;
-      border-radius: 999px;
-      text-decoration: none;
-      font-size: 0.95rem;
-      font-weight: 600;
-      transition: border-color 0.15s, transform 0.15s, background 0.15s;
-    }
-    .btn-secondary:hover {
-      background: color-mix(in srgb, var(--surface) 90%, transparent);
-      border-color: color-mix(in srgb, var(--github-mark) 28%, var(--border));
-      transform: translateY(-1px);
-    }
-    .btn-icon {
-      width: 1rem;
-      height: 1rem;
-      display: block;
-      flex: 0 0 auto;
-    }
-    .btn-status {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.4rem;
-      padding-left: 0.2rem;
-      font-size: 0.82rem;
-      font-weight: 600;
-      color: var(--muted);
-      white-space: nowrap;
-    }
-    .btn-status-dot {
-      width: 0.52rem;
-      height: 0.52rem;
-      border-radius: 999px;
-      background: #1a7f37;
-      box-shadow: 0 0 0 4px color-mix(in srgb, #1a7f37 18%, transparent);
-      flex: 0 0 auto;
-    }
-    /* Section */
-    section { margin-bottom: 2.5rem; }
-    section h2 {
-      font-size: 0.75rem;
-      font-weight: 600;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      color: var(--muted);
-      margin-bottom: 1rem;
-    }
+    --alert:             #c95d2e;
 
-    /* Feature grid */
-    .features {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 1px;
-      background: var(--border);
-      border: 1px solid var(--border);
-      border-radius: 18px;
-      overflow: hidden;
-      box-shadow: 0 12px 32px color-mix(in srgb, var(--text) 5%, transparent);
-    }
-    .feature {
-      background: color-mix(in srgb, var(--bg) 92%, var(--surface));
-      padding: 1.25rem 1.5rem;
-    }
-    .feature-name {
-      font-weight: 600;
-      font-size: 0.95rem;
-      color: var(--text);
-      margin-bottom: 0.25rem;
-    }
-    .feature-desc {
-      font-size: 0.875rem;
-      color: var(--muted);
-      line-height: 1.5;
-    }
+    --radius-sm:         6px;
+    --radius-md:         12px;
+    --radius-pill:       999px;
 
-    /* Formats table */
-    .formats {
-      border: 1px solid var(--border);
-      border-radius: 18px;
-      overflow: hidden;
-      box-shadow: 0 12px 32px color-mix(in srgb, var(--text) 5%, transparent);
-    }
-    .format-row {
-      display: grid;
-      grid-template-columns: 1fr 2fr;
-      gap: 1rem;
-      padding: 0.85rem 1.25rem;
-      border-bottom: 1px solid var(--border);
-      font-size: 0.9rem;
-    }
-    .format-row:last-child { border-bottom: none; }
-    .format-row:first-child {
-      background: var(--surface);
-      font-weight: 600;
-      font-size: 0.78rem;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-      color: var(--muted);
-    }
-    .format-name { color: var(--text); font-family: monospace; }
-    .format-note { color: var(--muted); }
+    --shadow-1:          0 1px 2px rgba(16, 24, 40, 0.04);
+    --shadow-2:          0 1px 3px rgba(16, 24, 40, 0.06), 0 1px 2px rgba(16, 24, 40, 0.04);
 
-    /* Stack */
-    .stack {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.5rem;
-    }
-    .tag {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      padding: 0.3rem 0.75rem;
-      font-size: 0.85rem;
-      color: var(--text);
-    }
+    --shell-max:         1280px;
+    --pad-x:             28px;
+    --header-h:          88px;
 
-    /* Footer */
-    footer {
-      border-top: 1px solid var(--border);
-      padding-top: 1.75rem;
-      margin-top: 1rem;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 0.75rem;
-      font-size: 0.875rem;
-      color: var(--muted);
-    }
-    footer a { color: var(--muted); text-decoration: none; }
-    footer a:hover { color: var(--accent); }
+    --font-sans:         "Avenir Next", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+    --font-display:      "Rockwell", "Cinzel", "Bookman Old Style", Georgia, serif;
+    --font-mono:         ui-monospace, SFMono-Regular, Menlo, Consolas, "Hack", monospace;
 
-    @media (max-width: 600px) {
-      .hero h1 { font-size: 2.2rem; }
-      .features { grid-template-columns: 1fr; }
-      footer { flex-direction: column; align-items: flex-start; }
-    }
-    @media (max-width: 920px) {
-      .page {
-        margin: 1rem;
-        padding: 2.5rem 1rem 2rem;
-        border-radius: 22px;
-      }
-      .hero-brand-mark {
-        width: 48px;
-        height: 48px;
-        border-radius: 14px;
-      }
-      .hero-brand-svg {
-        width: 28px;
-        height: 28px;
-      }
-      .hero-copy {
-        padding: 1rem;
-      }
-      .features {
-        grid-template-columns: 1fr 1fr;
-      }
-    }
-  </style>
+    --tracked:           0.16em;
+    --tracked-sm:        0.12em;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { min-height: 100%; }
+
+  body {
+    background: var(--bg);
+    background-image:
+      radial-gradient(circle at 10% 10%, rgba(209, 167, 75, 0.12), transparent 48%),
+      radial-gradient(circle at 85% 20%, rgba(15, 124, 123, 0.10), transparent 50%),
+      linear-gradient(0deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.12));
+    background-attachment: fixed;
+    color: var(--text);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.55;
+  }
+
+  a {
+    color: var(--accent);
+    text-decoration: underline;
+    text-decoration-color: rgba(15, 124, 123, 0.4);
+    text-underline-offset: 2px;
+  }
+  a:hover { color: var(--accent-hover); text-decoration-color: var(--accent-hover); }
+  a:visited { color: var(--accent-active); }
+
+  hr {
+    border: 0;
+    border-top: 1px solid var(--divider);
+    margin: 16px 0;
+  }
+
+  /* ----- Header ----- */
+  header.brand {
+    background: var(--panel);
+    border-bottom: 2px solid var(--border);
+    box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.45), var(--shadow-1);
+    position: relative;
+  }
+  header.brand::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent) 30%, var(--alert) 70%, transparent);
+    opacity: 0.45;
+  }
+  .brand-inner {
+    max-width: var(--shell-max);
+    margin: 0 auto;
+    padding: 12px var(--pad-x);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    min-height: var(--header-h);
+    flex-wrap: wrap;
+  }
+  .lockup {
+    display: inline-flex;
+    align-items: center;
+    gap: 14px;
+    text-decoration: none;
+    color: var(--text);
+  }
+  .lockup-mark {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: radial-gradient(circle at 30% 28%, var(--accent) 0%, var(--accent-deep) 60%, #04302f 100%);
+    border: 1px solid var(--accent-deep);
+    box-shadow: inset 0 0 10px rgba(14, 150, 148, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.4);
+    position: relative;
+    flex-shrink: 0;
+  }
+  .lockup-mark::after {
+    content: "";
+    position: absolute;
+    inset: 9px;
+    border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    border-top-color: rgba(255, 255, 255, 0.9);
+  }
+  .lockup-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    line-height: 1.1;
+  }
+  .lockup-eyebrow {
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: var(--tracked);
+    text-transform: uppercase;
+  }
+  .lockup-product {
+    color: var(--text);
+    font-family: var(--font-display);
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+  .lockup-sep { color: var(--text-muted); font-weight: 400; margin: 0 4px; }
+  .lockup-module { color: var(--accent); font-weight: 700; }
+  .lockup-subtitle {
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: var(--tracked);
+    text-transform: uppercase;
+    margin-top: 2px;
+  }
+  .header-ornament {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: var(--tracked-sm);
+    text-transform: uppercase;
+  }
+  .header-rose {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #ffd78e, var(--alert) 55%, #7a2b22);
+    border: 1px solid rgba(27, 36, 48, 0.45);
+    box-shadow: 0 0 0 1px rgba(255, 244, 222, 0.6);
+  }
+
+  /* ----- Layout ----- */
+  main { background: transparent; }
+  .shell {
+    max-width: var(--shell-max);
+    margin: 0 auto;
+    padding: 8px var(--pad-x) 56px;
+  }
+
+  section.panel {
+    padding: 28px 0 32px;
+    border-bottom: 1px solid var(--divider);
+  }
+  section.panel:last-of-type { border-bottom: 0; }
+
+  .section-heading {
+    color: var(--accent);
+    font-size: 0.85rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    font-weight: 700;
+    margin: 0 0 8px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .section-heading::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 3px rgba(14, 150, 148, 0.18);
+  }
+  .section-subhead {
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    line-height: 1.5;
+    max-width: 80ch;
+    margin: 0 0 18px;
+  }
+
+  /* ----- Hero ----- */
+  .hero h1 {
+    font-family: var(--font-display);
+    font-size: 2.4rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    line-height: 1.1;
+    margin: 0 0 12px;
+  }
+  .hero .lede {
+    color: var(--text-secondary);
+    max-width: 70ch;
+    font-size: 1.05rem;
+    margin: 0 0 20px;
+  }
+  .hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+  .badges { display: flex; flex-wrap: wrap; gap: 6px; }
+  .badge {
+    border: 1px solid var(--border-soft);
+    background: var(--panel);
+    color: var(--text);
+    padding: 4px 10px;
+    border-radius: var(--radius-pill);
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--accent);
+    color: var(--text-on-accent);
+    border: 1px solid var(--accent-hover);
+    border-radius: var(--radius-md);
+    padding: 10px 18px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    text-decoration: none;
+    box-shadow: var(--shadow-1);
+    transition: background 140ms ease, border-color 140ms ease, transform 80ms ease;
+  }
+  .btn:hover { background: var(--accent-hover); border-color: var(--accent-active); color: var(--text-on-accent); text-decoration: none; }
+  .btn:active { transform: translateY(1px); }
+  .btn-ghost {
+    background: var(--bg-raised);
+    color: var(--text);
+    border: 1px solid var(--border-soft);
+  }
+  .btn-ghost:hover { background: var(--panel-strong); border-color: var(--border); color: var(--text); }
+  .btn-icon { width: 1rem; height: 1rem; flex: 0 0 auto; }
+  .btn-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: 4px;
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: var(--tracked-sm);
+    text-transform: uppercase;
+  }
+  .btn-status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #1f8a5c;
+    box-shadow: 0 0 0 3px rgba(31, 138, 92, 0.18);
+  }
+
+  /* ----- Features ----- */
+  .features {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+  .feature {
+    background: var(--panel);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-md);
+    padding: 16px 18px;
+    box-shadow: var(--shadow-1);
+  }
+  .feature-name {
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+  .feature-desc {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+
+  /* ----- Formats ----- */
+  .formats {
+    background: var(--panel);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    box-shadow: var(--shadow-1);
+  }
+  .format-row {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 16px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--divider);
+    font-size: 0.92rem;
+  }
+  .format-row:last-child { border-bottom: 0; }
+  .format-row.head {
+    background: var(--bg-raised);
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: var(--tracked-sm);
+    text-transform: uppercase;
+  }
+  .format-name { font-family: var(--font-mono); color: var(--text); }
+  .format-note { color: var(--text-secondary); }
+
+  /* ----- Stack tags ----- */
+  .stack { display: flex; flex-wrap: wrap; gap: 8px; }
+  .tag {
+    background: var(--panel);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm);
+    padding: 5px 10px;
+    font-size: 0.85rem;
+    color: var(--text);
+    font-family: var(--font-mono);
+  }
+
+  /* ----- Why ----- */
+  .why p {
+    color: var(--text-secondary);
+    font-size: 0.975rem;
+    line-height: 1.75;
+    max-width: 70ch;
+  }
+  .why code {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    background: var(--bg-raised);
+    border: 1px solid var(--border-soft);
+    border-radius: 4px;
+    padding: 0.1em 0.4em;
+  }
+
+  /* ----- Footer ----- */
+  footer.foot {
+    border-top: 1px solid var(--divider);
+    background: var(--panel);
+  }
+  .foot-inner {
+    max-width: var(--shell-max);
+    margin: 0 auto;
+    padding: 16px var(--pad-x);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+  }
+  footer.foot a { color: var(--text-secondary); text-decoration: none; }
+  footer.foot a:hover { color: var(--accent); }
+
+  @media (max-width: 920px) {
+    .features { grid-template-columns: 1fr 1fr; }
+    .hero h1 { font-size: 2rem; }
+    :root { --header-h: auto; }
+  }
+  @media (max-width: 600px) {
+    .hero h1 { font-size: 1.7rem; }
+    .features { grid-template-columns: 1fr; }
+    .foot-inner { flex-direction: column; align-items: flex-start; }
+    .header-ornament { display: none; }
+  }
+</style>
 </head>
 <body>
-  <div class="page-bg" aria-hidden="true">
-    <svg viewBox="0 0 1600 1100" preserveAspectRatio="xMidYMid slice" role="presentation">
-      <g transform="rotate(-12 800 550)">
-        <g class="bg-parallax-1" opacity="0.9">
-          <line class="bg-grid-line" x1="0" y1="180" x2="1600" y2="180"></line>
-          <line class="bg-grid-line" x1="0" y1="360" x2="1600" y2="360"></line>
-          <line class="bg-grid-line" x1="0" y1="540" x2="1600" y2="540"></line>
-          <line class="bg-grid-line" x1="0" y1="720" x2="1600" y2="720"></line>
-          <line class="bg-grid-line" x1="0" y1="900" x2="1600" y2="900"></line>
-          <line class="bg-grid-line" x1="180" y1="0" x2="180" y2="1100"></line>
-          <line class="bg-grid-line" x1="480" y1="0" x2="480" y2="1100"></line>
-          <line class="bg-grid-line" x1="780" y1="0" x2="780" y2="1100"></line>
-          <line class="bg-grid-line" x1="1080" y1="0" x2="1080" y2="1100"></line>
-          <line class="bg-grid-line" x1="1380" y1="0" x2="1380" y2="1100"></line>
-        </g>
-        <g class="bg-parallax-2">
-          <path class="bg-wave-5 bg-wave-slow" d="M-120,820 C-20,760 70,760 150,820 C240,888 320,888 400,820 C486,752 564,752 648,820 C730,888 812,888 892,820 C976,750 1060,750 1144,820 C1228,888 1312,888 1396,820 C1478,754 1560,754 1720,820"></path>
-          <path class="bg-wave-4 bg-wave-mid" d="M-120,690 C-36,614 52,614 138,690 C224,764 308,764 394,690 C478,616 562,616 646,690 C730,764 812,764 896,690 C982,614 1068,614 1154,690 C1240,766 1328,766 1414,690 C1498,616 1582,616 1720,690"></path>
-        </g>
-        <g class="bg-parallax-3">
-          <path class="bg-wave-3 bg-wave-fast" d="M-120,560 C-40,456 42,456 124,560 C204,664 286,664 368,560 C448,454 530,454 612,560 C692,666 776,666 858,560 C938,454 1020,454 1102,560 C1182,666 1266,666 1348,560 C1430,456 1514,456 1720,560"></path>
-          <path class="bg-wave-2 bg-wave-mid" d="M-120,430 C-32,294 54,294 140,430 C224,564 308,564 392,430 C474,292 558,292 642,430 C726,566 812,566 896,430 C980,294 1066,294 1152,430 C1236,566 1322,566 1408,430 C1492,294 1578,294 1720,430"></path>
-          <path class="bg-wave-1 bg-wave-slow" d="M-120,320 C-26,136 62,136 150,320 C234,500 320,500 404,320 C488,138 576,138 664,320 C750,502 838,502 924,320 C1010,138 1098,138 1186,320 C1270,500 1358,500 1442,320 C1526,138 1616,138 1720,320"></path>
-        </g>
-      </g>
-    </svg>
-  </div>
-  <div class="page">
-    <div class="hero">
-      <div class="hero-grid">
-        <div class="hero-copy">
-          <p class="hero-label">Open Source / Browser-Based</p>
-          <div class="hero-brand" aria-hidden="true">
-            <div class="hero-brand-mark">
-              <svg class="hero-brand-svg" viewBox="0 0 24 24" fill="none" role="presentation" aria-hidden="true">
-                <rect x="2" y="4" width="20" height="16" rx="2" stroke="currentColor" stroke-width="1.5"></rect>
-                <polyline points="4,16 7,10 10,14 13,8 16,12 19,6 22,11" fill="none" stroke="currentColor" stroke-width="1.5"></polyline>
-              </svg>
-            </div>
-          </div>
-  <h1>Mergen Scope - Free Online RF and Signal File Viewer</h1>
-  <p>Open DAT files online in a free browser-based viewer with markers, trace math, RF analysis tools, and multi-pane comparison.</p>
-          <div class="hero-actions">
-            <a href="mergen_scope.html?v=20260402" class="btn-primary">Open Viewer</a>
-          </div>
-          <div class="hero-actions-bottom">
-            <a href="mergen_scope.html?demo=default&v=20260402" class="btn-demo">Load Demo</a>
-            <a href="https://github.com/alpgoxd/mergen-scope" class="btn-secondary">
-              <svg class="btn-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" role="presentation">
-                <path d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.5 7.5 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.19 0 .21.15.46.55.38A8 8 0 0 0 16 8c0-4.42-3.58-8-8-8Z"></path>
-              </svg>
-              <span>Open on GitHub</span>
-              <span class="btn-status" aria-label="Deployment status: live">
-                <span class="btn-status-dot" aria-hidden="true"></span>
-                <span>Live</span>
-              </span>
-            </a>
-          </div>
-          <div class="hero-badges">
-            <span class="hero-badge">Markers</span>
-            <span class="hero-badge">Trace Ops</span>
-            <span class="hero-badge">Multi-pane</span>
-            <span class="hero-badge">RF Analysis</span>
-          </div>
-        </div>
+  <header class="brand" data-brand-header>
+    <div class="brand-inner">
+      <a class="lockup" href=".">
+        <span class="lockup-mark" aria-hidden="true"></span>
+        <span class="lockup-text">
+          <span class="lockup-eyebrow">RF Lab</span>
+          <span class="lockup-product">
+            Mergen Scope
+            <span class="lockup-sep">&middot;</span>
+            <span class="lockup-module">Signal File Viewer</span>
+          </span>
+          <span class="lockup-subtitle">Browser-based &middot; Open Source</span>
+        </span>
+      </a>
+      <div class="header-ornament" aria-hidden="true">
+        <span class="header-rose"></span>
+        <span>GPL-3.0</span>
       </div>
     </div>
+  </header>
 
-    <section>
-      <h2>Features</h2>
-      <div class="features">
-        <div class="feature">
-          <div class="feature-name">Multi-trace</div>
-          <div class="feature-desc">Load and overlay multiple measurement files for direct comparison.</div>
+  <main>
+    <div class="shell">
+      <section class="panel hero" aria-labelledby="hero-title">
+        <h2 class="section-heading">Module Overview</h2>
+        <p class="section-subhead">Mergen Scope ingests spectrum analyzer exports, S-parameter networks, and audio artifacts in the browser. No installation, no upload &mdash; signals stay on the workstation.</p>
+        <hr>
+        <h1 id="hero-title">Mergen Scope &mdash; RF &amp; Signal File Viewer</h1>
+        <p class="lede">Open DAT, CSV, Touchstone, and audio files in a free browser-based viewer with markers, trace math, RF analysis tools, and multi-pane comparison.</p>
+        <div class="hero-actions">
+          <a href="mergen_scope.html?v=20260402" class="btn">Open Viewer</a>
+          <a href="mergen_scope.html?demo=default&v=20260402" class="btn btn-ghost">Load Demo</a>
+          <a href="https://github.com/alpgoxd/mergen-scope" class="btn btn-ghost">
+            <svg class="btn-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" role="presentation">
+              <path d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.5 7.5 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.19 0 .21.15.46.55.38A8 8 0 0 0 16 8c0-4.42-3.58-8-8-8Z"></path>
+            </svg>
+            <span>Open on GitHub</span>
+            <span class="btn-status" aria-label="Deployment status: live">
+              <span class="btn-status-dot" aria-hidden="true"></span>
+              <span>Live</span>
+            </span>
+          </a>
         </div>
-        <div class="feature">
-          <div class="feature-name">Markers</div>
-          <div class="feature-desc">Place markers, search for peaks and minima, create delta markers between points.</div>
+        <div class="badges" aria-label="Capabilities">
+          <span class="badge">Markers</span>
+          <span class="badge">Trace Ops</span>
+          <span class="badge">Multi-pane</span>
+          <span class="badge">RF Analysis</span>
+          <span class="badge">Audio FFT</span>
         </div>
-        <div class="feature">
-          <div class="feature-name">Trace Ops</div>
-          <div class="feature-desc">Create derived traces with offset, scale, smoothing, and A/B trace math.</div>
-        </div>
-        <div class="feature">
-          <div class="feature-name">Multi-pane</div>
-          <div class="feature-desc">Compare traces in stacked panes with shared X navigation and independent Y scaling.</div>
-        </div>
-        <div class="feature">
-          <div class="feature-name">RF Analysis</div>
-          <div class="feature-desc">Run Noise PSD, IP3, peak tables, range statistics, threshold crossings, and bandwidth helpers.</div>
-        </div>
-        <div class="feature">
-          <div class="feature-name">No Online Dependencies</div>
-          <div class="feature-desc">All libraries are vendored locally. Works with direct file-open and GitHub Pages, with no CDN runtime calls.</div>
-        </div>
-      </div>
-    </section>
+      </section>
 
-    <section>
-      <h2>Supported Formats</h2>
-      <div class="formats">
-        <div class="format-row">
-          <span>Format</span>
-          <span>Notes</span>
+      <section class="panel" aria-labelledby="features-heading">
+        <h2 id="features-heading" class="section-heading">Capabilities</h2>
+        <p class="section-subhead">Operational primitives for inspecting RF and signal artifacts.</p>
+        <hr>
+        <div class="features">
+          <div class="feature">
+            <div class="feature-name">Multi-trace</div>
+            <div class="feature-desc">Load and overlay multiple measurement files for direct comparison.</div>
+          </div>
+          <div class="feature">
+            <div class="feature-name">Markers</div>
+            <div class="feature-desc">Place markers, search peaks and minima, and create delta markers between points.</div>
+          </div>
+          <div class="feature">
+            <div class="feature-name">Trace Ops</div>
+            <div class="feature-desc">Derive traces with offset, scale, smoothing, and A/B trace math.</div>
+          </div>
+          <div class="feature">
+            <div class="feature-name">Multi-pane</div>
+            <div class="feature-desc">Compare traces in stacked panes with shared X navigation and independent Y scaling.</div>
+          </div>
+          <div class="feature">
+            <div class="feature-name">RF Analysis</div>
+            <div class="feature-desc">Noise PSD, IP3, peak tables, range statistics, threshold crossings, bandwidth helpers.</div>
+          </div>
+          <div class="feature">
+            <div class="feature-name">No Online Deps</div>
+            <div class="feature-desc">All libraries vendored locally. Works with direct file-open and GitHub Pages, no CDN runtime calls.</div>
+          </div>
         </div>
-        <div class="format-row">
-          <span class="format-name">R&amp;S .dat</span>
-          <span class="format-note">Rohde &amp; Schwarz spectrum analyzer exports, tested primary target</span>
-        </div>
-        <div class="format-row">
-          <span class="format-name">Amplitude-only .dat</span>
-          <span class="format-note">Frequency axis reconstructed from Start/Stop metadata</span>
-        </div>
-        <div class="format-row">
-          <span class="format-name">Other formats</span>
-          <span class="format-note">Not implemented yet. Broader format support, including Touchstone, is planned for later phases.</span>
-        </div>
-      </div>
-    </section>
+      </section>
 
-    <section>
-      <h2>Technology</h2>
-      <div class="stack">
-        <span class="tag">Vanilla JavaScript (ES6+)</span>
-        <span class="tag">React 18, vendored</span>
-        <span class="tag">Recharts, vendored</span>
-        <span class="tag">Local helper modules</span>
-        <span class="tag">GitHub Pages</span>
-        <span class="tag">GPL-3.0</span>
-      </div>
-    </section>
+      <section class="panel" aria-labelledby="formats-heading">
+        <h2 id="formats-heading" class="section-heading">Supported Formats</h2>
+        <p class="section-subhead">Artifact intake. Frequency-domain output for every input format.</p>
+        <hr>
+        <div class="formats" role="table" aria-label="Supported file formats">
+          <div class="format-row head" role="row">
+            <span role="columnheader">Format</span>
+            <span role="columnheader">Notes</span>
+          </div>
+          <div class="format-row" role="row">
+            <span class="format-name" role="cell">R&amp;S .dat</span>
+            <span class="format-note" role="cell">Rohde &amp; Schwarz spectrum analyzer exports &mdash; primary tested target.</span>
+          </div>
+          <div class="format-row" role="row">
+            <span class="format-name" role="cell">Amplitude-only .dat</span>
+            <span class="format-note" role="cell">Frequency axis reconstructed from Start/Stop metadata.</span>
+          </div>
+          <div class="format-row" role="row">
+            <span class="format-name" role="cell">.csv / .txt</span>
+            <span class="format-note" role="cell">Generic delimited measurement tables.</span>
+          </div>
+          <div class="format-row" role="row">
+            <span class="format-name" role="cell">Touchstone .s1p / .s2p / .sNp</span>
+            <span class="format-note" role="cell">S/Y/Z matrix views, port-pair selection, and stability analysis.</span>
+          </div>
+          <div class="format-row" role="row">
+            <span class="format-name" role="cell">.mp3 / .wav</span>
+            <span class="format-note" role="cell">Decoded via Web Audio API; rendered as Hann-windowed averaged FFT (dBFS vs Hz).</span>
+          </div>
+        </div>
+      </section>
 
-<section>
-  <h2>Why I Built This</h2>
-  <p style="font-size:0.975rem; color:var(--muted); line-height:1.75; max-width:640px;">
-    I'm an electrical engineer, not a web developer. I wanted a simple way to inspect spectrum analyzer exports
-    and other waveform files directly in the browser, but I couldn't find a tool that was lightweight, practical,
-    and easy to use. So I built this.<br><br>
-    At the moment, it has only been tested with Rohde &amp; Schwarz FSVA3044
-    <code style="font-size:0.9em; background:var(--surface); border:1px solid var(--border); border-radius:3px; padding:0.1em 0.4em;">.dat</code> files,
-    but the goal is to support more instrument export formats over time, with no installation required.
-    If you find bugs, have suggestions, or want to contribute, feel free to open an issue.
-  </p>
-</section>
+      <section class="panel" aria-labelledby="tech-heading">
+        <h2 id="tech-heading" class="section-heading">Technology</h2>
+        <p class="section-subhead">Vendored runtime. Static delivery.</p>
+        <hr>
+        <div class="stack">
+          <span class="tag">Vanilla JS (ES6+)</span>
+          <span class="tag">React 18 (vendored)</span>
+          <span class="tag">Recharts (vendored)</span>
+          <span class="tag">Local helper modules</span>
+          <span class="tag">GitHub Pages</span>
+          <span class="tag">GPL-3.0</span>
+        </div>
+      </section>
 
-    <footer>
+      <section class="panel why" aria-labelledby="why-heading">
+        <h2 id="why-heading" class="section-heading">Why I Built This</h2>
+        <p class="section-subhead">Field notes from an electrical engineer.</p>
+        <hr>
+        <p>
+          I'm an electrical engineer, not a web developer. I wanted a simple way to inspect spectrum analyzer exports
+          and other waveform files directly in the browser, but I couldn't find a tool that was lightweight, practical,
+          and easy to use. So I built this.
+        </p>
+        <p style="margin-top: 14px;">
+          At the moment, it has only been tested with Rohde &amp; Schwarz FSVA3044 <code>.dat</code> files,
+          but the goal is to support more instrument export formats over time, with no installation required.
+          If you find bugs, have suggestions, or want to contribute, feel free to open an issue.
+        </p>
+      </section>
+    </div>
+  </main>
+
+  <footer class="foot">
+    <div class="foot-inner">
       <span>Built by <a href="https://github.com/alpgoxd">Alp Gokalp</a></span>
       <span>
         <a href="https://github.com/alpgoxd/mergen-scope">GitHub</a>
@@ -639,49 +598,7 @@
         &nbsp;&middot;&nbsp;
         <a href="https://github.com/alpgoxd/mergen-scope/blob/main/LICENSE">GPL-3.0</a>
       </span>
-    </footer>
-
-  </div>
-  <script>
-    (function () {
-      if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-      var root = document.documentElement;
-      var targetX = 0;
-      var targetY = 0;
-      var currentX = 0;
-      var currentY = 0;
-      var rafId = null;
-
-      function tick() {
-        currentX += (targetX - currentX) * 0.08;
-        currentY += (targetY - currentY) * 0.08;
-        root.style.setProperty("--mx", currentX.toFixed(4));
-        root.style.setProperty("--my", currentY.toFixed(4));
-        if (Math.abs(targetX - currentX) > 0.001 || Math.abs(targetY - currentY) > 0.001) {
-          rafId = requestAnimationFrame(tick);
-        } else {
-          rafId = null;
-        }
-      }
-
-      function queueTick() {
-        if (!rafId) rafId = requestAnimationFrame(tick);
-      }
-
-      window.addEventListener("pointermove", function (event) {
-        var x = (event.clientX / Math.max(window.innerWidth, 1)) * 2 - 1;
-        var y = (event.clientY / Math.max(window.innerHeight, 1)) * 2 - 1;
-        targetX = x;
-        targetY = y;
-        queueTick();
-      });
-
-      window.addEventListener("pointerleave", function () {
-        targetX = 0;
-        targetY = 0;
-        queueTick();
-      });
-    })();
-  </script>
+    </div>
+  </footer>
 </body>
 </html>
