@@ -572,17 +572,31 @@
 
       <section class="panel why" aria-labelledby="why-heading">
         <h2 id="why-heading" class="section-heading">Why I Built This</h2>
-        <p class="section-subhead">Field notes from an electrical engineer.</p>
+        <p class="section-subhead">Field notes from an RF and broadcast engineer.</p>
         <hr>
         <p>
-          I'm an electrical engineer, not a web developer. I wanted a simple way to inspect spectrum analyzer exports
-          and other waveform files directly in the browser, but I couldn't find a tool that was lightweight, practical,
-          and easy to use. So I built this.
+          I&rsquo;m an electrical and broadcast engineer&mdash;not a web developer. I needed a fast, practical way to
+          inspect spectrum data, audio, and waveform captures directly in the browser without installing or
+          maintaining heavy desktop tools. Nothing out there felt lightweight, flexible, and usable in real-world
+          workflows, so I built this.
         </p>
         <p style="margin-top: 14px;">
-          At the moment, it has only been tested with Rohde &amp; Schwarz FSVA3044 <code>.dat</code> files,
-          but the goal is to support more instrument export formats over time, with no installation required.
-          If you find bugs, have suggestions, or want to contribute, feel free to open an issue.
+          What started as a simple viewer for spectrum analyzer exports has evolved into a browser-based RF and
+          signal analysis tool&mdash;capable of handling spectrum data and audio analysis in a unified interface.
+        </p>
+        <p style="margin-top: 14px;">Currently supported formats include:</p>
+        <ul style="margin: 8px 0 0 1.25rem; color: var(--text-secondary); font-size: 0.975rem; line-height: 1.75; max-width: 70ch;">
+          <li>Rohde &amp; Schwarz <code>.dat</code> spectrum analyzer exports</li>
+          <li>Audio files such as <code>.wav</code> and <code>.mp3</code>, analyzed via FFT</li>
+        </ul>
+        <p style="margin-top: 14px;">The long-term goal is bigger:</p>
+        <p style="margin-top: 6px;">
+          a zero-install, browser-native signal analysis environment that supports real-time data, multiple
+          instrument formats, and integration with modern SDR and monitoring systems.
+        </p>
+        <p style="margin-top: 14px;">
+          If you find bugs, have ideas, or want to contribute, open an issue&mdash;this is being built for
+          engineers who actually use this stuff in the field.
         </p>
       </section>
     </div>
