@@ -1108,6 +1108,8 @@ function useAppController(){
   },[baseClearAllFiles,setPaneMode,setPaneRenderModes,setActivePaneId,setTracePaneMap,setPaneActiveTraceMap,setSelectedTraceName,setDragTraceName,setPaneActiveTrace,setOffsetSource,setOffsetValue,setScaleSource,setScaleValue,setSmoothSource,setSmoothMethod,setSmoothWindow,setSmoothPolyOrder,setSubtractA,setSubtractB,setTraceMathOperation,setSubtractInterpolation,setTraceOpsError,setPeakTableLimit,setPeakTableMinSpacing,setPeakTableMinAmp,setBandwidthDrop,setThresholdManual,setObwPercent,setAnalysisOpenStateRaw,setShowSidebar,setShowMeta,setShowTouchstoneControls,setShowMarkers,setShowImportExportPanel,setRightPanelOrder,setShowMarkerTools,setShowPaneTools,setShowSearchTools,setShowLineTools,setShowViewTools,setShowDots,setShowDT,setLockLinesAcrossPanes,setSearchDirection,setNewMarkerArmed,setMkrMode,setMarkerTrace,setMarkerTraceByPane,setSelectedMkrIdx,setSelectedRefLineId,setShowTraceOps,setTraceOpsOpenSections,setShowAnalysisPanel,setNoiseFilter,setNoiseSource,setIP3Gain,setTouchstoneStateByFileId,clearAllXZooms,clearAllPaneYZooms]);
   function clearAllFiles(){
     clearWorkspaceToBaseline();
+    workspaceAutoSaveSkipUntilRef.current=Date.now()+1500;
+    try{window.localStorage&&window.localStorage.removeItem("mergenScopeWorkspace");}catch(_){}
   }
   function restoreSnapshot(snapshot){
     setShowImportExportPanel(false);
@@ -1171,24 +1173,40 @@ function useAppController(){
       syncFileIdCounter:syncFileIdCounterFromSnapshot
     });
   }
+  var WORKSPACE_STORAGE_KEY="mergenScopeWorkspace";
+  var workspaceAutoSaveTimerRef=useRef(null);
+  var workspaceAutoSaveSkipUntilRef=useRef(0);
   var sharedHashLoadedRef=useRef(false);
   useEffect(function(){
     if(sharedHashLoadedRef.current)return;
-    if(typeof decodeShareableWorkspace!=="function")return;
+    if(typeof decodeShareableWorkspace!=="function"){sharedHashLoadedRef.current=true;return;}
     var hash=String(window.location.hash||"").replace(/^#/,"");
-    if(!hash)return;
-    var match=hash.match(/(?:^|[?&])w=([^&]+)/);
-    if(!match)return;
+    var match=hash?hash.match(/(?:^|[?&])w=([^&]+)/):null;
+    var token=null,source=null;
+    if(match){token=match[1];source="hash";}
+    else if(!getDemoLaunchPresetId()){
+      try{
+        var stored=window.localStorage&&window.localStorage.getItem(WORKSPACE_STORAGE_KEY);
+        if(stored){token=stored;source="storage";}
+      }catch(_){}
+    }
+    if(!token){sharedHashLoadedRef.current=true;return;}
     sharedHashLoadedRef.current=true;
-    decodeShareableWorkspace(match[1]).then(function(payload){
+    workspaceAutoSaveSkipUntilRef.current=Date.now()+5000;
+    decodeShareableWorkspace(token).then(function(payload){
       if(!payload)return;
       var snapshot=extractWorkspaceSnapshotFromPackage(payload);
       clearWorkspaceToBaseline();
-      if(!restoreSnapshot(snapshot))throw new Error("Unable to restore shared workspace.");
-      try{window.history.replaceState(null,"",window.location.pathname+window.location.search);}catch(_){}
+      if(!restoreSnapshot(snapshot))throw new Error("Unable to restore workspace.");
+      if(source==="hash"){
+        try{window.history.replaceState(null,"",window.location.pathname+window.location.search);}catch(_){}
+      }
       setError(null);
     }).catch(function(err){
-      setError("Share link: "+(err&&err.message?err.message:"Unable to load shared workspace."));
+      if(source==="storage"){
+        try{window.localStorage&&window.localStorage.removeItem(WORKSPACE_STORAGE_KEY);}catch(_){}
+      }
+      setError((source==="hash"?"Share link: ":"Saved workspace: ")+(err&&err.message?err.message:"Unable to restore."));
     });
   },[]);
   function restoreDemoWorkspace(preset){
@@ -2438,6 +2456,30 @@ function useAppController(){
 
   var mKeys=["Type","Mode","Date","Center Freq","Span","Start","Stop","Ref Level","Rf Att","RBW","VBW","SWT","Preamplifier","Detector","Trace Mode","Sweep Count","Format","Sample Rate","Channels","Channel","Sample Count","FFT Size","Window","Overlap","Frames Averaged","Peak","RMS","Crest Factor","A-weighted RMS","C-weighted RMS","Fundamental","THD+N","SNR (est.)"];
   var hasData=files.length>0;
+  useEffect(function(){
+    if(!sharedHashLoadedRef.current)return;
+    if(typeof encodeShareableWorkspace!=="function")return;
+    if(workspaceAutoSaveTimerRef.current){window.clearTimeout(workspaceAutoSaveTimerRef.current);workspaceAutoSaveTimerRef.current=null;}
+    if(Date.now()<workspaceAutoSaveSkipUntilRef.current)return;
+    if(!hasData){
+      try{window.localStorage&&window.localStorage.removeItem("mergenScopeWorkspace");}catch(_){}
+      return;
+    }
+    workspaceAutoSaveTimerRef.current=window.setTimeout(function(){
+      workspaceAutoSaveTimerRef.current=null;
+      try{
+        var payload=buildWorkspaceExportPackage(buildCurrentWorkspaceSnapshot());
+        encodeShareableWorkspace(payload).then(function(token){
+          try{window.localStorage&&window.localStorage.setItem("mergenScopeWorkspace",token);}catch(quotaErr){
+            try{window.localStorage&&window.localStorage.removeItem("mergenScopeWorkspace");}catch(_){}
+          }
+        }).catch(function(){});
+      }catch(_){}
+    },1500);
+    return function(){
+      if(workspaceAutoSaveTimerRef.current){window.clearTimeout(workspaceAutoSaveTimerRef.current);workspaceAutoSaveTimerRef.current=null;}
+    };
+  },[files,vis,paneMode,paneRenderModes,activePaneId,tracePaneMap,paneActiveTraceMap,zoomAll,sharedZoom,paneXZooms,paneYZooms,markers,refLines,noiseResults,ip3Results,selectedTraceName,hasData,buildCurrentWorkspaceSnapshot]);
   var yU=activePaneModel&&activePaneModel.axisInfo?activePaneModel.axisInfo.yUnit:"dBm";
   var toolbarYDivLabel=(activePaneTickModel&&isFinite(activePaneTickModel.yDiv))?formatDivLabel(Math.abs(activePaneTickModel.yDiv),yU||""):"--";
   var rightPanelSections=useMemo(function(){
