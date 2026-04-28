@@ -468,6 +468,111 @@
     return /\.(mp3|wav)$/i.test(String(fileName||""));
   }
 
+  function isSpecMaskFileName(fileName){
+    return /\.mask\.json$/i.test(String(fileName||""));
+  }
+
+  function freqScaleForUnit(unit){
+    var key=String(unit||"Hz").trim().toLowerCase();
+    if(key==="hz")return 1;
+    if(key==="khz")return 1e3;
+    if(key==="mhz")return 1e6;
+    if(key==="ghz")return 1e9;
+    return 1;
+  }
+
+  function parseSpecMaskJson(text,fileName){
+    _fc++;
+    var fc=_fc;
+    var parsed;
+    try{parsed=JSON.parse(String(text||""));}
+    catch(e){throw new Error("Mask file is not valid JSON: "+(e&&e.message||e));}
+    if(!parsed||typeof parsed!=="object")throw new Error("Mask file must be a JSON object.");
+    var rawPoints=parsed.points||parsed.segments||parsed.data;
+    if(!Array.isArray(rawPoints)||!rawPoints.length)throw new Error("Mask file is missing a non-empty 'points' array.");
+    var freqScale=freqScaleForUnit(parsed.freqUnit||parsed.freq_unit||(parsed.units&&parsed.units.x));
+    var data=[];
+    for(var i=0;i<rawPoints.length;i++){
+      var pt=rawPoints[i];
+      var f=null,limit=null;
+      if(Array.isArray(pt)&&pt.length>=2){f=Number(pt[0]);limit=Number(pt[1]);}
+      else if(pt&&typeof pt==="object"){
+        f=Number(pt.freq!=null?pt.freq:(pt.f!=null?pt.f:pt.frequency));
+        limit=Number(pt.limit!=null?pt.limit:(pt.amp!=null?pt.amp:pt.value));
+      }
+      if(!isFinite(f)||!isFinite(limit))continue;
+      data.push({freq:f*freqScale,amp:limit});
+    }
+    if(data.length<2)throw new Error("Mask file must define at least 2 valid points.");
+    data.sort(function(a,b){return a.freq-b.freq;});
+    var maskType=String(parsed.type||"upper").toLowerCase();
+    if(maskType!=="upper"&&maskType!=="lower")maskType="upper";
+    var name=parsed.name||String(fileName||"mask").replace(/^.*[\\/]/,"").replace(/\.[^.]+$/,"");
+    var prefix=name+" ";
+    var trace=makeTrace(prefix,fileName,"Limit",fc);
+    trace.data=normalizeTraceData(data);
+    trace.units={x:"Hz",y:String(parsed.limitUnit||(parsed.units&&parsed.units.y)||"dBm")};
+    trace.kind="mask";
+    trace.maskType=maskType;
+    if(parsed.color)trace.color=String(parsed.color);
+    var meta={
+      "Format":"Spec Mask",
+      "Mask Type":maskType,
+      "Points":data.length,
+      "Limit Unit":trace.units.y,
+      "Freq Range":{value:[data[0].freq,data[data.length-1].freq],unit:"Hz"}
+    };
+    return {format:"mask",meta:meta,traces:[trace]};
+  }
+
+  function buildMaskComplianceReport(maskTrace,traces){
+    if(!maskTrace||!Array.isArray(maskTrace.data)||!maskTrace.data.length)return null;
+    var maskType=String(maskTrace.maskType||"upper").toLowerCase();
+    var data=maskTrace.data;
+    function interpAtFreq(freq){
+      if(freq<=data[0].freq)return data[0].amp;
+      if(freq>=data[data.length-1].freq)return data[data.length-1].amp;
+      var lo=0,hi=data.length-1,mid;
+      while(lo<hi-1){
+        mid=(lo+hi)>>1;
+        if(data[mid].freq<=freq)lo=mid;else hi=mid;
+      }
+      var a=data[lo],b=data[hi];
+      var t=b.freq===a.freq?0:(freq-a.freq)/(b.freq-a.freq);
+      return a.amp+(b.amp-a.amp)*t;
+    }
+    var reports=[];
+    (Array.isArray(traces)?traces:[]).forEach(function(tr){
+      if(!tr||tr===maskTrace)return;
+      if((tr.kind||"raw")==="mask")return;
+      if(!Array.isArray(tr.data)||!tr.data.length)return;
+      var inRange=tr.data.filter(function(p){
+        return p.freq>=data[0].freq&&p.freq<=data[data.length-1].freq;
+      });
+      if(!inRange.length){
+        reports.push({trace:tr,coverage:0,violations:0,worstMarginDb:null,pass:true,reason:"out of mask range"});
+        return;
+      }
+      var violations=0,worst=null;
+      for(var i=0;i<inRange.length;i++){
+        var pt=inRange[i];
+        var lim=interpAtFreq(pt.freq);
+        var margin=maskType==="upper"?(lim-pt.amp):(pt.amp-lim);
+        if(margin<0)violations++;
+        if(worst==null||margin<worst)worst=margin;
+      }
+      reports.push({
+        trace:tr,
+        coverage:inRange.length,
+        violations:violations,
+        worstMarginDb:worst,
+        pass:violations===0,
+        reason:null
+      });
+    });
+    return reports;
+  }
+
   function radix2FFT(re,im){
     var n=re.length;
     if(n<2)return;
@@ -756,6 +861,9 @@
     AUDIO_WINDOWS:AUDIO_WINDOWS,
     AUDIO_FFT_SIZES:AUDIO_FFT_SIZES,
     AUDIO_DEFAULT_OPTIONS:AUDIO_DEFAULT_OPTIONS,
-    normalizeAudioFftOptions:normalizeAudioFftOptions
+    normalizeAudioFftOptions:normalizeAudioFftOptions,
+    isSpecMaskFileName:isSpecMaskFileName,
+    parseSpecMaskJson:parseSpecMaskJson,
+    buildMaskComplianceReport:buildMaskComplianceReport
   };
 })(window);

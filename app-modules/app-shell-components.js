@@ -882,6 +882,31 @@
         mKeys.forEach(function(k){
           if(f.meta&&f.meta[k]!==undefined)items.push(h(MR,{key:"m-"+f.id+"-"+k,label:k,value:f.meta[k]}));
         });
+        if(f.format==="mask"&&typeof PH.buildMaskComplianceReport==="function"&&Array.isArray(f.traces)&&f.traces[0]){
+          var maskTrace=f.traces[0];
+          var candidateTraces=(p.allTr||[]).filter(function(tr){
+            if(!tr||(tr.kind||"raw")==="mask")return false;
+            return p.vis?(p.vis[tr.name]!==false):true;
+          });
+          var reports=PH.buildMaskComplianceReport(maskTrace,candidateTraces)||[];
+          if(reports.length){
+            items.push(h(Sec,{key:"compliance-"+f.id},"Mask Compliance"));
+            reports.forEach(function(r,idx){
+              if(r.reason==="out of mask range"){
+                items.push(h(MR,{key:"comp-"+f.id+"-"+idx,label:r.trace.dn||r.trace.name,value:"\u2014 out of range"}));
+                return;
+              }
+              var verdict=r.pass?"PASS":"FAIL ("+r.violations+")";
+              var marginText=r.worstMarginDb!=null?" \u00B7 "+(r.worstMarginDb>=0?"+":"")+r.worstMarginDb.toFixed(2)+" dB":"";
+              items.push(h(MR,{
+                key:"comp-"+f.id+"-"+idx,
+                label:r.trace.dn||r.trace.name,
+                value:verdict+marginText,
+                vc:r.pass?"#1f8a5c":"#b3261e"
+              }));
+            });
+          }
+        }
         if(isTouchstoneFile(f)){
           var touchstoneRows=getTouchstoneSummaryRows(f);
           if(touchstoneRows.length){
