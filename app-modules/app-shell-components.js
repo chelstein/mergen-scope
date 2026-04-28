@@ -1123,7 +1123,7 @@
         h(Btn,{soft:true,color:C.tr&&C.tr[1],title:"Export raw traces, derived traces, markers, reference lines, current analysis traces, saved analysis results, and Touchstone-backed derived views as JSON.",onClick:p.exportTraceData||p.exportData,disabled:!hasData},"Export JSON"),
         h(Btn,{soft:true,color:(C.tr&&C.tr[5])||C.accent,title:"Export the current chart view as a higher-resolution PNG image.",onClick:p.exportChartPng,disabled:!hasData},"PNG"),
         h(Btn,{soft:true,color:C.refV,title:"Export the current chart view as a pure-graph SVG image.",onClick:p.exportChartSvg,disabled:!hasData},"SVG"),
-        p.exportChartCsv?h(Btn,{soft:true,color:(C.tr&&C.tr[3])||C.accent,title:"Export the active pane's visible traces as a long-format CSV (trace,freq,amp).",onClick:p.exportChartCsv,disabled:!hasData},"CSV"):null
+        p.shareWorkspaceLink?h(Btn,{soft:true,color:C.accent,title:"Build a self-contained share URL with the current workspace state and copy it to the clipboard. Recipients can open the link to load this workspace.",onClick:p.shareWorkspaceLink,disabled:!hasData},"Share Link"):null
       ),
       h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
         h("button",{className:"clr-btn",title:"Remove all imported files, traces, markers, and analysis results from the current workspace.",onClick:function(){if(hasData&&window.confirm("Clear all files and traces?")&&p.clearAllFiles)p.clearAllFiles();},disabled:!hasData,style:{background:"transparent",border:"1px solid var(--border)",color:"var(--muted)",borderRadius:6,padding:"6px 10px",cursor:hasData?"pointer":"not-allowed",fontSize:12,fontWeight:500,whiteSpace:"nowrap",lineHeight:"1.4",opacity:hasData?1:0.45,width:"100%"}},"Clear Workspace")

@@ -22,7 +22,7 @@ var IP3_ROLE_LABELS=MH.IP3_ROLE_LABELS,cloneMarkerWithoutIP3Label=MH.cloneMarker
 var reconcileDerivedTraceGraph=DSH.reconcileDerivedTraceGraph;
 var clampPaneCount=PAH.clampPaneCount,getTracePaneId=PAH.getTracePaneId,getPaneAutoYDomain=PAH.getPaneAutoYDomain;
 var buildWorkspaceSnapshot=WH.buildWorkspaceSnapshot,buildWorkspaceExportPackage=WH.buildWorkspaceExportPackage,normalizeWorkspaceSnapshot=WH.normalizeWorkspaceSnapshot,restoreWorkspaceSnapshot=WH.restoreWorkspaceSnapshot,extractWorkspaceSnapshotFromPackage=WH.extractWorkspaceSnapshotFromPackage;
-var buildTraceExportPackage=EH.buildTraceExportPackage,buildTimestampedDownloadName=EH.buildTimestampedDownloadName,downloadBlobFile=EH.downloadBlobFile,downloadJsonFile=EH.downloadJsonFile,exportElementAsSvgFile=EH.exportElementAsSvgFile,exportElementAsPngFile=EH.exportElementAsPngFile,exportSvgMarkupAsPngFile=EH.exportSvgMarkupAsPngFile,buildPaneCsv=EH.buildPaneCsv;
+var buildTraceExportPackage=EH.buildTraceExportPackage,buildTimestampedDownloadName=EH.buildTimestampedDownloadName,downloadBlobFile=EH.downloadBlobFile,downloadJsonFile=EH.downloadJsonFile,exportElementAsSvgFile=EH.exportElementAsSvgFile,exportElementAsPngFile=EH.exportElementAsPngFile,exportSvgMarkupAsPngFile=EH.exportSvgMarkupAsPngFile,encodeShareableWorkspace=EH.encodeShareableWorkspace,decodeShareableWorkspace=EH.decodeShareableWorkspace;
 var getDefaultAnalysisOpenState=ATH.getDefaultAnalysisOpenState,normalizeAnalysisOpenState=ATH.normalizeAnalysisOpenState,setAnalysisOpenState=ATH.setAnalysisOpenState,clearAllAnalysisOpenState=ATH.clearAllAnalysisOpenState,resolveAnalysisTarget=ATH.resolveAnalysisTarget,resolveSelectedHorizontalLine=ATH.resolveSelectedHorizontalLine,getTraceTouchstoneContext=ATH.getTraceTouchstoneContext,isTouchstoneReflectionTarget=ATH.isTouchstoneReflectionTarget;
 var useYControls=Hooks.useYControls,useXControls=Hooks.useXControls,useFileStore=Hooks.useFileStore,useChartNav=Hooks.useChartNav,useSharedCursor=Hooks.useSharedCursor,useNoisePSD=Hooks.useNoisePSD,useIP3=Hooks.useIP3,useMarkers=Hooks.useMarkers,useInteractionMode=Hooks.useInteractionMode,useNoisePSDModel=Hooks.useNoisePSDModel,useMarkerActions=Hooks.useMarkerActions,useIP3Workflow=Hooks.useIP3Workflow,usePaneLayout=Hooks.usePaneLayout,useAnalysisRegistry=Hooks.useAnalysisRegistry,makeDefaultTouchstoneState=Hooks.makeDefaultTouchstoneState,cloneTouchstoneSelectionState=Hooks.cloneTouchstoneSelectionState,buildTouchstoneSelectionsFromTraces=Hooks.buildTouchstoneSelectionsFromTraces,reconcileTouchstoneFileSelections=Hooks.reconcileTouchstoneFileSelections,buildTouchstoneStabilityTrace=Hooks.buildTouchstoneStabilityTrace,isFileDragEvent=Hooks.isFileDragEvent,getDemoWorkspacePresetById=Hooks.getDemoWorkspacePresetById,getDemoLaunchPresetId=Hooks.getDemoLaunchPresetId,clearDemoLaunchQueryParam=Hooks.clearDemoLaunchQueryParam,buildBundledDemoFiles=Hooks.buildBundledDemoFiles;
 var Shell=global.AppShell||{},Analysis=global.AppAnalysis||{},Chart=global.AppChart||{};
@@ -1153,6 +1153,26 @@ function useAppController(){
       syncFileIdCounter:syncFileIdCounterFromSnapshot
     });
   }
+  var sharedHashLoadedRef=useRef(false);
+  useEffect(function(){
+    if(sharedHashLoadedRef.current)return;
+    if(typeof decodeShareableWorkspace!=="function")return;
+    var hash=String(window.location.hash||"").replace(/^#/,"");
+    if(!hash)return;
+    var match=hash.match(/(?:^|[?&])w=([^&]+)/);
+    if(!match)return;
+    sharedHashLoadedRef.current=true;
+    decodeShareableWorkspace(match[1]).then(function(payload){
+      if(!payload)return;
+      var snapshot=extractWorkspaceSnapshotFromPackage(payload);
+      clearWorkspaceToBaseline();
+      if(!restoreSnapshot(snapshot))throw new Error("Unable to restore shared workspace.");
+      try{window.history.replaceState(null,"",window.location.pathname+window.location.search);}catch(_){}
+      setError(null);
+    }).catch(function(err){
+      setError("Share link: "+(err&&err.message?err.message:"Unable to load shared workspace."));
+    });
+  },[]);
   function restoreDemoWorkspace(preset){
     if(!preset)return false;
     var demoFiles=buildBundledDemoFiles(preset);
@@ -1305,6 +1325,36 @@ function useAppController(){
       setError(null);
     }catch(err){
       setError("Unable to export workspace: "+(err&&err.message?err.message:"Unknown error."));
+    }
+  }
+  function shareWorkspaceLink(){
+    try{
+      if(typeof encodeShareableWorkspace!=="function"){
+        setError("Share link is not available in this build.");
+        return;
+      }
+      var payload=buildWorkspaceExportPackage(buildCurrentWorkspaceSnapshot());
+      encodeShareableWorkspace(payload).then(function(token){
+        var loc=window.location;
+        var base=loc.origin+loc.pathname+loc.search;
+        var url=base+"#w="+token;
+        var notice=null;
+        if(navigator.clipboard&&navigator.clipboard.writeText){
+          navigator.clipboard.writeText(url).then(function(){
+            setError("Share link copied to clipboard.");
+          }).catch(function(){
+            setError("Share link generated. Copy from the address bar.");
+          });
+        }else{
+          notice="Share link generated. Copy from the address bar.";
+        }
+        try{window.history.replaceState(null,"",url);}catch(_){}
+        if(notice)setError(notice);
+      }).catch(function(err){
+        setError("Unable to build share link: "+(err&&err.message?err.message:"Unknown error."));
+      });
+    }catch(err){
+      setError("Unable to build share link: "+(err&&err.message?err.message:"Unknown error."));
     }
   }
   function exportTraceData(){
@@ -2423,7 +2473,7 @@ function useAppController(){
   var toolbarProps={C:C,allTr:allTr,paneTraces:cTr,vis:vis,zoom:zoom,yZoom:yZoom,cData:cData,fUnit:fUnit,yU:yU,showMarkerTools:showMarkerTools,showPaneTools:showPaneTools,showSearchTools:showSearchTools,showLineTools:showLineTools,showViewTools:showViewTools,mkrMode:mkrMode,refMode:refMode,setNewMarkerArmed:setNewMarkerArmed,newMarkerArmed:newMarkerArmed,setMkrMode:setMkrMode,setRefMode:setRefMode,markerTrace:markerTrace,setMarkerTrace:setMarkerTraceForActivePane,markers:markers,dRef:dRef,setDRef:setDRef,selectedMkrIdx:selectedMkrIdx,setSelectedMkrIdx:setSelectedMkrIdx,selectedRefLineId:selectedRefLineId,setSelectedRefLineId:setSelectedRefLineId,panes:panes,activePaneId:activePaneId,setActivePaneId:setActivePaneId,setPaneMode:setPaneMode,fitAllPanes:fitAllPanes,hasData:hasData,peakSrch:peakSrch,nxtPeak:nxtPeak,minSrch:minSrch,nxtMin:nxtMin,searchDirection:searchDirection,setSearchDirection:setSearchDirection,lockLinesAcrossPanes:lockLinesAcrossPanes,setLockLinesAcrossPanes:setLockLinesAcrossPanes,zoomAll:zoomAll,setZoomAll:setZoomAll,resetYZ:resetYZ,setZoom:setZoom,interactionCtl:interactionCtl,selectedMarker:selectedMarker,refLines:refLines,activePaneRenderMode:activePaneRenderMode,availablePaneRenderModes:availablePaneRenderModes,setActivePaneRenderMode:function(mode){setPaneRenderMode(activePaneId,mode);},toolbarXDivLabel:toolbarXDivLabel,toolbarYDivLabel:toolbarYDivLabel,hasTouchstoneFiles:hasTouchstoneFiles};
   var chartWorkspaceProps={allTr:allTr,paneModels:paneModels,panes:panes,activePaneId:activePaneId,setActivePaneId:setActivePaneId,vis:vis,traceColorMap:traceColorMap,showDots:showDots,markers:markers,selectedMkrIdx:selectedMkrIdx,setSelectedMkrIdx:setSelectedMkrIdx,refLines:refLines,selectedRefLineId:selectedRefLineId,setSelectedRefLineId:setSelectedRefLineId,dragRefLineRef:dragRefLineRef,dragTraceName:dragTraceName,chartDomainRef:chartDomainRef,chartRef:chartRef,chartExportRef:chartExportRef,paneTickModelRef:paneTickModelRef,chartClick:chartClick,chartMMWithDrag:chartMMWithDrag,chartML:chartML,mDown:mDown,mUp:mUp,handleChartMouseDownCapture:handleChartMouseDownCapture,handleChartMouseUpCapture:handleChartMouseUpCapture,hoverData:hoverData,hoverX:hoverX,selA:selA,selB:selB,getXDomainHz:getXDomainHz,mcMap:mcMap,C:C,selectedTraceName:selectedTraceName,selectTrace:selectTrace,moveSelectedTraceToPane:moveSelectedTraceToPane,fitPane:fitPane,clearPane:clearPane,resetYZ:resetYZ,setPaneSmithRange:setPaneSmithRange,clearPaneSmithRange:clearPaneSmithRange,undoPaneSmithRangeZoom:undoPaneSmithRangeZoom,getTraceByName:getTraceByName,getTraceFile:getTraceFile,onSmithMoveSelectedMarker:moveSelectedMarkerToSmithPointData,getTracePaneId:function(traceName){return getTracePaneId(tracePaneMap,traceName);},tracePaneMap:tracePaneMap,onPaneDrop:onPaneDrop,isDrag:isDrag,setIsDrag:setIsDrag,loadFiles:loadFiles,fileInputRef:fRef};
   var analysisStackProps={visible:analysisPanelVisible,showTraceOps:showTraceOps,showAnalysisPanel:showAnalysisPanel,showNoise:showNoise,showIP3:showIP3,visibleAnalysisIds:visibleAnalysisIds,normalizedAnalysisOpenState:normalizedAnalysisOpenState,traceOpsProps:{C:C,openOps:traceOpsOpenSections,setOpenOps:setTraceOpsOpenSections,traceOptions:traceOptions,offsetSource:offsetSource,setOffsetSource:setOffsetSource,offsetValue:offsetValue,setOffsetValue:setOffsetValue,createOffsetDerivedTrace:createOffsetDerivedTrace,scaleSource:scaleSource,setScaleSource:setScaleSource,scaleValue:scaleValue,setScaleValue:setScaleValue,createScaledDerivedTrace:createScaledDerivedTrace,smoothSource:smoothSource,setSmoothSource:setSmoothSource,smoothMethod:smoothMethod,setSmoothMethod:setSmoothMethod,smoothWindow:smoothWindow,setSmoothWindow:setSmoothWindow,smoothPolyOrder:smoothPolyOrder,setSmoothPolyOrder:setSmoothPolyOrder,createSmoothedDerivedTrace:createSmoothedDerivedTrace,subtractA:subtractA,setSubtractA:setSubtractA,subtractB:subtractB,setSubtractB:setSubtractB,traceMathOperation:traceMathOperation,setTraceMathOperation:setTraceMathOperation,subtractInterpolation:subtractInterpolation,setSubtractInterpolation:setSubtractInterpolation,createTraceMathDerivedTrace:createTraceMathDerivedTrace,traceMathUnitWarning:traceMathUnitWarning,traceOpsError:traceOpsError},analysisMenuProps:{C:C,hasTraceOps:showTraceOps,registry:analysisRegistry,toggleAnalysisOpen:toggleAnalysisOpen,target:analysisTarget},noiseCardProps:{C:C,allTr:allTr,noiseSource:noiseSource,setNoiseSource:setNoiseSource,noiseFilter:noiseFilter,setNoiseFilter:setNoiseFilter,npsdStats:npsdStats,addSavedNoise:addSavedNoise,noiseResults:noiseResults,removeNoise:removeNoiseResult},ip3CardProps:{C:C,ip3Ctl:ip3Ctl,ip3Pts:ip3Pts,ip3Res:ip3Res,yU:yU,ip3Gain:ip3Gain,setIP3Gain:setIP3Gain,saveIP3:saveCurrentIP3,ip3Results:ip3Results,removeIP3:removeIP3Result,setMarkers:setMarkers,selectedMarker:selectedMarker,selectedIndex:selectedMkrIdx,assignSelectedRole:assignSelectedRole,clearSelectedRole:clearSelectedRole,autoPickIP3:autoPickIP3},peakSpurProps:{C:C,target:analysisTarget,peakTableLimit:peakTableLimit,setPeakTableLimit:setPeakTableLimit,peakTableMinSpacing:peakTableMinSpacing,setPeakTableMinSpacing:setPeakTableMinSpacing,peakTableMinAmp:peakTableMinAmp,setPeakTableMinAmp:setPeakTableMinAmp,addPeakMarker:addPeakTableMarker,addAllPeakMarkers:addAllPeakTableMarkers},rangeStatsProps:{C:C,target:analysisTarget},bandwidthProps:{C:C,target:analysisTarget,selectedMarker:selectedMarker,bandwidthDrop:bandwidthDrop,setBandwidthDrop:setBandwidthDrop,addMarker:addAnalysisMarker,addMarkers:addAnalysisMarkers},vswrProps:{C:C,target:analysisTarget,onGenerateTrace:onGenerateTouchstoneTrace},returnLossProps:{C:C,target:analysisTarget,onGenerateTrace:onGenerateTouchstoneTrace},groupDelayProps:{C:C,target:analysisTarget,onGenerateTrace:onGenerateTouchstoneTrace},reciprocityIsolationProps:{C:C,target:analysisTarget,getTraceByName:getTraceByName,getTraceFile:getTraceFile},thresholdProps:{C:C,target:analysisTarget,thresholdManual:thresholdManual,setThresholdManual:setThresholdManual,addMarkers:addAnalysisMarkers},rippleProps:{C:C,target:analysisTarget,addMarkers:addAnalysisMarkers},obwProps:{C:C,target:analysisTarget,obwPercent:obwPercent,setObwPercent:setObwPercent},channelPowerProps:{C:C,target:analysisTarget},touchstoneStabilityProps:{C:C,target:analysisTarget,onGenerateTrace:onGenerateTouchstoneTrace}};
-  var importExportPanelProps={visible:showImportExportPanel,C:C,hasData:hasData,files:files,allTr:allTr,panes:panes,activePaneId:activePaneId,fRef:fRef,iRef:iRef,openWorkspace:openWorkspace,exportWorkspace:exportWorkspace,exportTraceData:exportTraceData,exportChartPng:exportChartPng,exportChartSvg:exportChartSvg,exportChartCsv:exportChartCsv,clearAllFiles:clearAllFiles};
+  var importExportPanelProps={visible:showImportExportPanel,C:C,hasData:hasData,files:files,allTr:allTr,panes:panes,activePaneId:activePaneId,fRef:fRef,iRef:iRef,openWorkspace:openWorkspace,exportWorkspace:exportWorkspace,exportTraceData:exportTraceData,exportChartPng:exportChartPng,exportChartSvg:exportChartSvg,shareWorkspaceLink:shareWorkspaceLink,clearAllFiles:clearAllFiles};
   var dataTableProps={visible:showDT,hasData:hasData,C:C,allTr:allTr,dtTrace:dtTrace,setDtTrace:setDtTrace,zoom:zoom,yU:yU};
   var footerProps={hasData:hasData};
 

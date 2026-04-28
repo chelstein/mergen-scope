@@ -421,58 +421,55 @@
     });
   }
 
-  function csvEscape(value){
-    var s=value==null?"":String(value);
-    if(/[",\r\n]/.test(s))return "\""+s.replace(/"/g,"\"\"")+"\"";
-    return s;
+  function bytesToBase64url(bytes){
+    var bin="";
+    for(var i=0;i<bytes.length;i+=0x4000){
+      bin+=String.fromCharCode.apply(null,bytes.subarray(i,i+0x4000));
+    }
+    var b64=(global.btoa||function(){throw new Error("btoa unavailable");})(bin);
+    return b64.replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
   }
 
-  function buildPaneCsv(opts){
-    opts=opts||{};
-    var traces=Array.isArray(opts.traces)?opts.traces:[];
-    var vis=opts.vis||{};
-    var paneId=opts.paneId||null;
-    var paneTitle=opts.paneTitle||"";
-    var tracePaneMap=opts.tracePaneMap||{};
-    var includeAllPanes=opts.includeAllPanes===true;
-    var visibleTraces=traces.filter(function(tr){
-      if(!tr||!Array.isArray(tr.data)||!tr.data.length)return false;
-      if(vis&&vis[tr.name]===false)return false;
-      if(!includeAllPanes&&paneId!=null){
-        var tp=tracePaneMap?tracePaneMap[tr.name]:null;
-        if(tp!=null&&tp!==paneId)return false;
-      }
-      return true;
+  function base64urlToBytes(s){
+    var pad=s.length%4===0?"":"=".repeat(4-(s.length%4));
+    var b64=String(s||"").replace(/-/g,"+").replace(/_/g,"/")+pad;
+    var bin=(global.atob||function(){throw new Error("atob unavailable");})(b64);
+    var out=new Uint8Array(bin.length);
+    for(var i=0;i<bin.length;i++)out[i]=bin.charCodeAt(i);
+    return out;
+  }
+
+  function encodeShareableWorkspace(payload){
+    var json=JSON.stringify(payload);
+    var bytes=new TextEncoder().encode(json);
+    if(typeof CompressionStream==="undefined"){
+      return Promise.resolve("u."+bytesToBase64url(bytes));
+    }
+    var stream=new Blob([bytes]).stream().pipeThrough(new CompressionStream("gzip"));
+    return new Response(stream).arrayBuffer().then(function(buf){
+      return "g."+bytesToBase64url(new Uint8Array(buf));
     });
-    if(!visibleTraces.length)return null;
-    var unitsX=null,unitsY=null;
-    visibleTraces.forEach(function(tr){
-      var u=tr.units||{};
-      if(!unitsX&&u.x)unitsX=u.x;
-      if(!unitsY&&u.y)unitsY=u.y;
+  }
+
+  function decodeShareableWorkspace(token){
+    if(!token)return Promise.resolve(null);
+    var dot=String(token).indexOf(".");
+    var prefix=dot>=0?String(token).slice(0,dot):"g";
+    var data=dot>=0?String(token).slice(dot+1):String(token);
+    var bytes;
+    try{bytes=base64urlToBytes(data);}
+    catch(e){return Promise.reject(new Error("Share token is not valid base64url."));}
+    if(prefix==="u"){
+      try{return Promise.resolve(JSON.parse(new TextDecoder().decode(bytes)));}
+      catch(e){return Promise.reject(new Error("Share token contains invalid JSON."));}
+    }
+    if(typeof DecompressionStream==="undefined"){
+      return Promise.reject(new Error("This browser does not support gzip decompression."));
+    }
+    var stream=new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+    return new Response(stream).arrayBuffer().then(function(buf){
+      return JSON.parse(new TextDecoder().decode(buf));
     });
-    var lines=[];
-    lines.push("# Mergen Scope CSV export");
-    lines.push("# generated: "+new Date().toISOString());
-    if(paneTitle)lines.push("# pane: "+paneTitle);
-    if(unitsX)lines.push("# units_x: "+unitsX);
-    if(unitsY)lines.push("# units_y: "+unitsY);
-    lines.push("# format: long (one row per trace,point)");
-    lines.push("trace,freq,amp");
-    visibleTraces.forEach(function(tr){
-      var label=getTraceLabel(tr)||tr.name||tr.id||"trace";
-      tr.data.forEach(function(pt){
-        var f=Number(pt.freq),a=Number(pt.amp);
-        if(!isFinite(f)||!isFinite(a))return;
-        lines.push(csvEscape(label)+","+f+","+a);
-      });
-    });
-    return {
-      csv:lines.join("\n")+"\n",
-      traceCount:visibleTraces.length,
-      unitsX:unitsX,
-      unitsY:unitsY
-    };
   }
 
   global.ExportHelpers={
@@ -488,6 +485,7 @@
     exportElementAsSvgFile:exportElementAsSvgFile,
     exportElementAsPngFile:exportElementAsPngFile,
     exportSvgMarkupAsPngFile:exportSvgMarkupAsPngFile,
-    buildPaneCsv:buildPaneCsv
+    encodeShareableWorkspace:encodeShareableWorkspace,
+    decodeShareableWorkspace:decodeShareableWorkspace
   };
 })(window);
