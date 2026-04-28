@@ -94,6 +94,8 @@
   var nearestPoint=PH.nearestPoint;
   var parseRSDat=PH.parseRSDat;
   var parseMeasurementFile=PH.parseMeasurementFile||PH.parseImportedFile||PH.parseRSDat;
+  var isAudioFileName=PH.isAudioFileName||function(name){return /\.(mp3|wav)$/i.test(String(name||""));};
+  var parseAudioFile=PH.parseAudioFile;
   var IP3_ROLE_KEYS=MH.IP3_ROLE_KEYS;
   var IP3_ROLE_LABELS=MH.IP3_ROLE_LABELS;
   var isIP3Label=MH.isIP3Label;
@@ -597,64 +599,84 @@ function useFileStore(dep){
   var m0=files.length>0?files[0].meta:{};
 
   var loadFiles=useCallback(function(fl,append){
-    var arr=Array.from(fl).filter(function(f){return/\.(dat|csv|txt|s\d+p)$/i.test(f.name);});
+    var arr=Array.from(fl).filter(function(f){return/\.(dat|csv|txt|s\d+p|mp3|wav)$/i.test(f.name);});
     if(!arr.length)return;
     var pending=arr.length,results=[];
+    function handleParsed(parsed,file){
+      if(parsed.format==="touchstone"){
+        var touchstoneFile={id:++_fid,fileName:file.name,meta:parsed.meta||{},traces:[],format:"touchstone",touchstoneNetwork:parsed.touchstoneNetwork||null};
+        var defaultTouchstoneState=makeDefaultTouchstoneState(touchstoneFile);
+        touchstoneFile=reconcileTouchstoneFileSelections(touchstoneFile,defaultTouchstoneState);
+        parsed=Object.assign({},parsed,{
+          traces:touchstoneFile.traces,
+          touchstoneUiState:touchstoneFile.touchstoneUiState,
+          _fileId:touchstoneFile.id
+        });
+      }
+      if(parsed.traces.length===0)setError(function(p){return(p?p+" | ":"")+file.name+": no data";});
+      else{
+        var fileId=parsed._fileId||(++_fid);
+        parsed.traces.forEach(function(tr){tr.fileId=fileId;tr.fileName=file.name;});
+        results.push({id:fileId,fileName:file.name,meta:parsed.meta,traces:parsed.traces,format:parsed.format||"rs-dat",touchstoneNetwork:parsed.touchstoneNetwork||null,touchstoneUiState:parsed.touchstoneUiState||null});
+      }
+    }
+    function finalize(){
+      if(pending!==0)return;
+      results=dedupeFiles(results);
+      var existingSigs=new Set((append?files:[]).map(fileSig));
+      var existingNames=new Set((append?files:[]).map(function(f){return String(f.fileName||"").toLowerCase()+"|"+((f.traces||[]).length||0);}));
+      var newResults=results.filter(function(r){
+        var sig=fileSig(r);
+        var nk=String(r.fileName||"").toLowerCase()+"|"+((r.traces||[]).length||0);
+        if(!sig||existingSigs.has(sig))return false;
+        if(existingNames.has(nk) && append)return false;
+        existingSigs.add(sig);
+        existingNames.add(nk);
+        return true;
+      });
+      var nv={};newResults.forEach(function(r){r.traces.forEach(function(t){nv[t.name]=true;});});
+      if(append){
+        if(!newResults.length){
+          setError(function(p){return(p?p+" | ":"")+"No new unique files were added.";});
+          return;
+        }
+        setFiles(function(p){return mergeFileLists(p,newResults);});
+        setVis(function(p){return Object.assign({},p,nv);});
+      }
+      else{
+        setFiles(newResults);setVis(nv);dep.clearMarkers();dep.setZoom(null);dep.setYZoom(null);dep.setDRef(null);setError(null);
+        dep.setRefLines([]);dep.setRefMode(null);dep.resetIP3();
+        dep.setNoiseResults([]);dep.setIP3Results([]);dep.setYMnI("");dep.setYMxI("");
+      }
+      var fn=newResults[0]?.traces?.[0]?.name;
+      if(!append||!dep.dtTrace)dep.setDtTrace(fn||null);
+      if(!append||!dep.noiseSource)dep.setNoiseSource(fn||null);
+    }
     arr.forEach(function(file){
+      var isAudio=isAudioFileName(file.name);
+      if(isAudio&&typeof parseAudioFile!=="function"){
+        setError(function(p){return(p?p+" | ":"")+file.name+": audio parsing is not available.";});
+        pending--;finalize();
+        return;
+      }
       var reader=new FileReader();
       reader.onload=function(ev){
+        var promise;
         try{
-          var parsed=parseMeasurementFile(ev.target.result,file.name);
-          if(parsed.format==="touchstone"){
-            var touchstoneFile={id:++_fid,fileName:file.name,meta:parsed.meta||{},traces:[],format:"touchstone",touchstoneNetwork:parsed.touchstoneNetwork||null};
-            var defaultTouchstoneState=makeDefaultTouchstoneState(touchstoneFile);
-            touchstoneFile=reconcileTouchstoneFileSelections(touchstoneFile,defaultTouchstoneState);
-            parsed=Object.assign({},parsed,{
-              traces:touchstoneFile.traces,
-              touchstoneUiState:touchstoneFile.touchstoneUiState,
-              _fileId:touchstoneFile.id
-            });
-          }
-          if(parsed.traces.length===0)setError(function(p){return(p?p+" | ":"")+file.name+": no data";});
-          else{
-            var fileId=parsed._fileId||(++_fid);
-            parsed.traces.forEach(function(tr){tr.fileId=fileId;tr.fileName=file.name;});
-            results.push({id:fileId,fileName:file.name,meta:parsed.meta,traces:parsed.traces,format:parsed.format||"rs-dat",touchstoneNetwork:parsed.touchstoneNetwork||null,touchstoneUiState:parsed.touchstoneUiState||null});
-          }
-        }catch(e){setError(function(p){return(p?p+" | ":"")+file.name+": "+e.message;});}
-        pending--;
-        if(pending===0){
-          results=dedupeFiles(results);
-          var existingSigs=new Set((append?files:[]).map(fileSig));
-          var existingNames=new Set((append?files:[]).map(function(f){return String(f.fileName||"").toLowerCase()+"|"+((f.traces||[]).length||0);}));
-          var newResults=results.filter(function(r){
-            var sig=fileSig(r);
-            var nk=String(r.fileName||"").toLowerCase()+"|"+((r.traces||[]).length||0);
-            if(!sig||existingSigs.has(sig))return false;
-            if(existingNames.has(nk) && append)return false;
-            existingSigs.add(sig);
-            existingNames.add(nk);
-            return true;
-          });
-          var nv={};newResults.forEach(function(r){r.traces.forEach(function(t){nv[t.name]=true;});});
-          if(append){
-            if(!newResults.length){
-              setError(function(p){return(p?p+" | ":"")+"No new unique files were added.";});
-              return;
-            }
-            setFiles(function(p){return mergeFileLists(p,newResults);});
-            setVis(function(p){return Object.assign({},p,nv);});
-          }
-          else{
-            setFiles(newResults);setVis(nv);dep.clearMarkers();dep.setZoom(null);dep.setYZoom(null);dep.setDRef(null);setError(null);
-            dep.setRefLines([]);dep.setRefMode(null);dep.resetIP3();
-            dep.setNoiseResults([]);dep.setIP3Results([]);dep.setYMnI("");dep.setYMxI("");
-          }
-          var fn=newResults[0]?.traces?.[0]?.name;
-          if(!append||!dep.dtTrace)dep.setDtTrace(fn||null);
-          if(!append||!dep.noiseSource)dep.setNoiseSource(fn||null);
-        }
-      };reader.readAsText(file);
+          promise=isAudio
+            ?parseAudioFile(ev.target.result,file.name)
+            :Promise.resolve(parseMeasurementFile(ev.target.result,file.name));
+        }catch(e){promise=Promise.reject(e);}
+        promise.then(function(parsed){handleParsed(parsed,file);},function(e){
+          setError(function(p){return(p?p+" | ":"")+file.name+": "+(e&&e.message||e);});
+        }).then(function(){pending--;finalize();});
+      };
+      reader.onerror=function(){
+        setError(function(p){return(p?p+" | ":"")+file.name+": failed to read file.";});
+        pending--;finalize();
+      };
+      if(isAudio)reader.readAsArrayBuffer(file);
+      else reader.readAsText(file);
     });
   },[dep.dtTrace,dep.noiseSource,files,dep]);
 
