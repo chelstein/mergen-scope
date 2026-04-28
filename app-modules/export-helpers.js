@@ -421,6 +421,57 @@
     });
   }
 
+  function bytesToBase64url(bytes){
+    var bin="";
+    for(var i=0;i<bytes.length;i+=0x4000){
+      bin+=String.fromCharCode.apply(null,bytes.subarray(i,i+0x4000));
+    }
+    var b64=(global.btoa||function(){throw new Error("btoa unavailable");})(bin);
+    return b64.replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+  }
+
+  function base64urlToBytes(s){
+    var pad=s.length%4===0?"":"=".repeat(4-(s.length%4));
+    var b64=String(s||"").replace(/-/g,"+").replace(/_/g,"/")+pad;
+    var bin=(global.atob||function(){throw new Error("atob unavailable");})(b64);
+    var out=new Uint8Array(bin.length);
+    for(var i=0;i<bin.length;i++)out[i]=bin.charCodeAt(i);
+    return out;
+  }
+
+  function encodeShareableWorkspace(payload){
+    var json=JSON.stringify(payload);
+    var bytes=new TextEncoder().encode(json);
+    if(typeof CompressionStream==="undefined"){
+      return Promise.resolve("u."+bytesToBase64url(bytes));
+    }
+    var stream=new Blob([bytes]).stream().pipeThrough(new CompressionStream("gzip"));
+    return new Response(stream).arrayBuffer().then(function(buf){
+      return "g."+bytesToBase64url(new Uint8Array(buf));
+    });
+  }
+
+  function decodeShareableWorkspace(token){
+    if(!token)return Promise.resolve(null);
+    var dot=String(token).indexOf(".");
+    var prefix=dot>=0?String(token).slice(0,dot):"g";
+    var data=dot>=0?String(token).slice(dot+1):String(token);
+    var bytes;
+    try{bytes=base64urlToBytes(data);}
+    catch(e){return Promise.reject(new Error("Share token is not valid base64url."));}
+    if(prefix==="u"){
+      try{return Promise.resolve(JSON.parse(new TextDecoder().decode(bytes)));}
+      catch(e){return Promise.reject(new Error("Share token contains invalid JSON."));}
+    }
+    if(typeof DecompressionStream==="undefined"){
+      return Promise.reject(new Error("This browser does not support gzip decompression."));
+    }
+    var stream=new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+    return new Response(stream).arrayBuffer().then(function(buf){
+      return JSON.parse(new TextDecoder().decode(buf));
+    });
+  }
+
   global.ExportHelpers={
     cloneTraceForExport:cloneTraceForExport,
     buildNoisePsdTraceExport:buildNoisePsdTraceExport,
@@ -433,6 +484,8 @@
     downloadJsonFile:downloadJsonFile,
     exportElementAsSvgFile:exportElementAsSvgFile,
     exportElementAsPngFile:exportElementAsPngFile,
-    exportSvgMarkupAsPngFile:exportSvgMarkupAsPngFile
+    exportSvgMarkupAsPngFile:exportSvgMarkupAsPngFile,
+    encodeShareableWorkspace:encodeShareableWorkspace,
+    decodeShareableWorkspace:decodeShareableWorkspace
   };
 })(window);
