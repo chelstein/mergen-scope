@@ -421,6 +421,60 @@
     });
   }
 
+  function csvEscape(value){
+    var s=value==null?"":String(value);
+    if(/[",\r\n]/.test(s))return "\""+s.replace(/"/g,"\"\"")+"\"";
+    return s;
+  }
+
+  function buildPaneCsv(opts){
+    opts=opts||{};
+    var traces=Array.isArray(opts.traces)?opts.traces:[];
+    var vis=opts.vis||{};
+    var paneId=opts.paneId||null;
+    var paneTitle=opts.paneTitle||"";
+    var tracePaneMap=opts.tracePaneMap||{};
+    var includeAllPanes=opts.includeAllPanes===true;
+    var visibleTraces=traces.filter(function(tr){
+      if(!tr||!Array.isArray(tr.data)||!tr.data.length)return false;
+      if(vis&&vis[tr.name]===false)return false;
+      if(!includeAllPanes&&paneId!=null){
+        var tp=tracePaneMap?tracePaneMap[tr.name]:null;
+        if(tp!=null&&tp!==paneId)return false;
+      }
+      return true;
+    });
+    if(!visibleTraces.length)return null;
+    var unitsX=null,unitsY=null;
+    visibleTraces.forEach(function(tr){
+      var u=tr.units||{};
+      if(!unitsX&&u.x)unitsX=u.x;
+      if(!unitsY&&u.y)unitsY=u.y;
+    });
+    var lines=[];
+    lines.push("# Mergen Scope CSV export");
+    lines.push("# generated: "+new Date().toISOString());
+    if(paneTitle)lines.push("# pane: "+paneTitle);
+    if(unitsX)lines.push("# units_x: "+unitsX);
+    if(unitsY)lines.push("# units_y: "+unitsY);
+    lines.push("# format: long (one row per trace,point)");
+    lines.push("trace,freq,amp");
+    visibleTraces.forEach(function(tr){
+      var label=getTraceLabel(tr)||tr.name||tr.id||"trace";
+      tr.data.forEach(function(pt){
+        var f=Number(pt.freq),a=Number(pt.amp);
+        if(!isFinite(f)||!isFinite(a))return;
+        lines.push(csvEscape(label)+","+f+","+a);
+      });
+    });
+    return {
+      csv:lines.join("\n")+"\n",
+      traceCount:visibleTraces.length,
+      unitsX:unitsX,
+      unitsY:unitsY
+    };
+  }
+
   global.ExportHelpers={
     cloneTraceForExport:cloneTraceForExport,
     buildNoisePsdTraceExport:buildNoisePsdTraceExport,
@@ -433,6 +487,7 @@
     downloadJsonFile:downloadJsonFile,
     exportElementAsSvgFile:exportElementAsSvgFile,
     exportElementAsPngFile:exportElementAsPngFile,
-    exportSvgMarkupAsPngFile:exportSvgMarkupAsPngFile
+    exportSvgMarkupAsPngFile:exportSvgMarkupAsPngFile,
+    buildPaneCsv:buildPaneCsv
   };
 })(window);
