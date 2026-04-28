@@ -2422,8 +2422,8 @@ function AppRoot(){
   var chartHandlers=app.chartHandlers;
   var view=app.view;
   return h("div",{style:{background:"var(--bg)",color:"var(--text)",height:"100vh",display:"flex",flexDirection:"column"},onDragOver:function(ev){ev.preventDefault();if(isFileDragEvent(ev))state.setIsDrag(true);},onDragLeave:function(ev){if(!ev.currentTarget.contains(ev.relatedTarget))state.setIsDrag(false);},onDrop:chartHandlers.onDrop},
-    h("input",{ref:refs.fRef,type:"file",accept:".dat,.csv,.txt,.s1p,.s2p,.s3p,.s4p,.s5p,.s6p,.s7p,.s8p,.s9p",multiple:true,style:{display:"none"},onChange:function(ev){if(ev.target.files.length)chartHandlers.loadFiles(ev.target.files,false);ev.target.value="";}}),
-    h("input",{ref:refs.iRef,type:"file",accept:".dat,.csv,.txt,.s1p,.s2p,.s3p,.s4p,.s5p,.s6p,.s7p,.s8p,.s9p",multiple:true,style:{display:"none"},onChange:function(ev){if(ev.target.files.length)chartHandlers.loadFiles(ev.target.files,true);ev.target.value="";}}),
+    h("input",{ref:refs.fRef,type:"file",accept:".dat,.csv,.txt,.s1p,.s2p,.s3p,.s4p,.s5p,.s6p,.s7p,.s8p,.s9p,.mp3,.wav",multiple:true,style:{display:"none"},onChange:function(ev){if(ev.target.files.length)chartHandlers.loadFiles(ev.target.files,false);ev.target.value="";}}),
+    h("input",{ref:refs.iRef,type:"file",accept:".dat,.csv,.txt,.s1p,.s2p,.s3p,.s4p,.s5p,.s6p,.s7p,.s8p,.s9p,.mp3,.wav",multiple:true,style:{display:"none"},onChange:function(ev){if(ev.target.files.length)chartHandlers.loadFiles(ev.target.files,true);ev.target.value="";}}),
     h("input",{ref:refs.wRef,type:"file",accept:".json,application/json",style:{display:"none"},onChange:function(ev){if(ev.target.files.length)actions.importWorkspaceFile(ev.target.files[0]);ev.target.value="";}}),
     derived.hasData&&state.isDrag?renderOverlay(chartHandlers.onDrop):null,
     h(TopBar,view.topBarProps),

@@ -464,6 +464,118 @@
     return parseImportedFile(text,fileName);
   }
 
+  function isAudioFileName(fileName){
+    return /\.(mp3|wav)$/i.test(String(fileName||""));
+  }
+
+  function radix2FFT(re,im){
+    var n=re.length;
+    if(n<2)return;
+    for(var i=1,j=0;i<n;i++){
+      var bit=n>>1;
+      for(;j&bit;bit>>=1){j^=bit;}
+      j^=bit;
+      if(i<j){
+        var tr=re[i];re[i]=re[j];re[j]=tr;
+        var ti=im[i];im[i]=im[j];im[j]=ti;
+      }
+    }
+    for(var len=2;len<=n;len<<=1){
+      var half=len>>1;
+      var ang=-2*Math.PI/len;
+      var wRe=Math.cos(ang),wIm=Math.sin(ang);
+      for(var s=0;s<n;s+=len){
+        var cRe=1,cIm=0;
+        for(var k=0;k<half;k++){
+          var idx=s+k,jdx=idx+half;
+          var tRe=re[jdx]*cRe-im[jdx]*cIm;
+          var tIm=re[jdx]*cIm+im[jdx]*cRe;
+          re[jdx]=re[idx]-tRe;
+          im[jdx]=im[idx]-tIm;
+          re[idx]+=tRe;
+          im[idx]+=tIm;
+          var nRe=cRe*wRe-cIm*wIm;
+          cIm=cRe*wIm+cIm*wRe;
+          cRe=nRe;
+        }
+      }
+    }
+  }
+
+  function parseAudioFile(arrayBuffer,fileName){
+    _fc++;
+    var fc=_fc;
+    var ACtor=global.AudioContext||global.webkitAudioContext;
+    if(!ACtor)return Promise.reject(new Error("Web Audio API is not available in this browser."));
+    var ctx=new ACtor();
+    var bufferCopy=arrayBuffer.slice(0);
+    return new Promise(function(resolve,reject){
+      var done=false;
+      var ok=function(buf){if(done)return;done=true;resolve(buf);};
+      var fail=function(err){if(done)return;done=true;reject(err instanceof Error?err:new Error("Unable to decode audio file."));};
+      try{
+        var p=ctx.decodeAudioData(bufferCopy,ok,fail);
+        if(p&&typeof p.then==="function")p.then(ok,fail);
+      }catch(e){fail(e);}
+    }).then(function(buffer){
+      try{ctx.close();}catch(_){}
+      var sr=buffer.sampleRate;
+      var len=buffer.length;
+      var ch=buffer.numberOfChannels||1;
+      if(!len)throw new Error("Audio file contains no samples.");
+      var mono=new Float32Array(len);
+      for(var c=0;c<ch;c++){
+        var src=buffer.getChannelData(c);
+        for(var i=0;i<len;i++)mono[i]+=src[i];
+      }
+      if(ch>1)for(var k=0;k<len;k++)mono[k]/=ch;
+      var N=8192;
+      while(N>len)N>>=1;
+      if(N<256)throw new Error("Audio file is too short to analyze.");
+      var hop=N>>1;
+      var hann=new Float32Array(N);
+      for(var n=0;n<N;n++)hann[n]=0.5*(1-Math.cos(2*Math.PI*n/(N-1)));
+      var winSum=0;for(var w=0;w<N;w++)winSum+=hann[w];
+      var halfBins=N>>1;
+      var sum=new Float64Array(halfBins+1);
+      var re=new Float64Array(N);
+      var im=new Float64Array(N);
+      var frames=0;
+      for(var start=0;start+N<=len;start+=hop){
+        for(var s=0;s<N;s++){re[s]=mono[start+s]*hann[s];im[s]=0;}
+        radix2FFT(re,im);
+        for(var b=0;b<=halfBins;b++)sum[b]+=Math.sqrt(re[b]*re[b]+im[b]*im[b]);
+        frames++;
+      }
+      if(!frames){
+        for(var z=0;z<N;z++){re[z]=z<len?mono[z]*hann[z]:0;im[z]=0;}
+        radix2FFT(re,im);
+        for(var b2=0;b2<=halfBins;b2++)sum[b2]=Math.sqrt(re[b2]*re[b2]+im[b2]*im[b2]);
+        frames=1;
+      }
+      var data=[];
+      for(var b3=0;b3<=halfBins;b3++){
+        var avg=sum[b3]/frames;
+        var scale=(b3===0||b3===halfBins)?1:2;
+        var amp=(avg/winSum)*scale;
+        data.push({freq:b3*sr/N,amp:20*Math.log10(amp+1e-12)});
+      }
+      var prefix=String(fileName||"audio").replace(/^.*[\\/]/,"").replace(/\.[^.]+$/,"")+" ";
+      var trace=makeTrace(prefix,fileName,"FFT",fc);
+      trace.data=normalizeTraceData(data);
+      trace.units={x:"Hz",y:"dBFS"};
+      var meta={
+        "Format":"Audio",
+        "Sample Rate":{value:sr,unit:"Hz"},
+        "Channels":ch,
+        "Sample Count":len,
+        "FFT Size":N,
+        "Frames Averaged":frames
+      };
+      return {format:"audio",meta:meta,traces:[trace]};
+    });
+  }
+
   global.ParserHelpers={
     resetParserFileCounter:resetParserFileCounter,
     syncParserFileCounter:syncParserFileCounter,
@@ -476,6 +588,8 @@
     detectImportedFileFormat:detectImportedFileFormat,
     parseTouchstone:parseTouchstone,
     parseImportedFile:parseImportedFile,
-    parseMeasurementFile:parseMeasurementFile
+    parseMeasurementFile:parseMeasurementFile,
+    isAudioFileName:isAudioFileName,
+    parseAudioFile:parseAudioFile
   };
 })(window);

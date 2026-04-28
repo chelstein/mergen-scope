@@ -109,7 +109,7 @@
           textAlign:"center",
           background:props.isDrag?"var(--drop-h)":"var(--card)"
         }},
-          h("div",{style:{fontSize:16,fontWeight:700,marginBottom:6}},"Drop .dat, .csv, or Touchstone .s1p/.s2p/.sNp files here"),
+          h("div",{style:{fontSize:16,fontWeight:700,marginBottom:6}},"Drop .dat, .csv, Touchstone .s1p/.s2p/.sNp, or audio .mp3/.wav files here"),
           h("div",{style:{fontSize:12,color:"var(--muted)",lineHeight:1.45}},"Click the graph to import local files. Touchstone imports will unlock S/Y/Z matrix views and stability analysis once they are loaded.")
         )
       )
