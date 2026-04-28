@@ -175,9 +175,43 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-sans);-webkit
 .brand-actions a{color:var(--muted);text-decoration:none;}
 .brand-actions a:hover{color:var(--accent);}
 .brand-rose{width:10px;height:10px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#ffd78e,#c95d2e 55%,#7a2b22);border:1px solid rgba(27,36,48,0.45);box-shadow:0 0 0 1px rgba(255,244,222,0.6);}
+.palette-toggle{appearance:none;background:transparent;border:1px solid var(--border);color:var(--muted);font:inherit;font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;padding:5px 9px;border-radius:6px;cursor:pointer;transition:color .14s,border-color .14s,background-color .14s;display:inline-flex;align-items:center;gap:6px;}
+.palette-toggle:hover{color:var(--accent);border-color:var(--accent);}
+.palette-toggle[aria-pressed="true"]{color:var(--accent);border-color:var(--accent);background:rgba(15,124,123,0.08);}
+@media(prefers-color-scheme:dark){.palette-toggle[aria-pressed="true"]{background:rgba(92,184,182,0.12);}}
+.palette-toggle .swatches{display:inline-flex;gap:2px;}
+.palette-toggle .swatches i{display:block;width:6px;height:10px;border-radius:1px;}
+.palette-toggle[aria-pressed="false"] .sw1{background:var(--trace1);}
+.palette-toggle[aria-pressed="false"] .sw2{background:var(--trace2);}
+.palette-toggle[aria-pressed="false"] .sw3{background:var(--trace3);}
+.palette-toggle[aria-pressed="true"] .sw1{background:#0072B2;}
+.palette-toggle[aria-pressed="true"] .sw2{background:#D55E00;}
+.palette-toggle[aria-pressed="true"] .sw3{background:#009E73;}
+
+/* Color-blind safe (Wong/Okabe-Ito) trace + derived overrides.
+   Applied via [data-palette="cb"] on <html>. */
+:root[data-palette="cb"]{
+  --trace1:#0072B2;--trace2:#D55E00;--trace3:#009E73;--trace4:#CC79A7;--trace5:#E69F00;--trace6:#56B4E9;
+  --derived1:#3a8fcd;--derived2:#e07a3a;--derived3:#3aac8c;--derived4:#d999c0;--derived5:#f1b933;--derived6:#7fc7ee;
+  --mkr-n:#CC79A7;--mkr-d:#0072B2;--mkr-p:#D55E00;
+  --noise-tr:#CC79A7;--ip3-color:#D55E00;
+}
+@media(prefers-color-scheme:dark){:root[data-palette="cb"]{
+  --trace1:#56B4E9;--trace2:#E69F00;--trace3:#009E73;--trace4:#CC79A7;--trace5:#F0E442;--trace6:#0072B2;
+  --derived1:#7fc7ee;--derived2:#f1b933;--derived3:#3aac8c;--derived4:#d999c0;--derived5:#f5ec73;--derived6:#3a8fcd;
+}}
+
 #root{flex:1 1 auto;min-height:0;width:100%;}
-@media(max-width:600px){.brand-actions{display:none;}.brand-bar-inner{padding:6px 10px;}}
+@media(max-width:600px){.brand-actions{display:none;}.brand-bar-inner{padding:6px 10px;}.palette-toggle .label-text{display:none;}}
 </style>
+<script>
+  /* Apply saved palette before paint to avoid a flash of standard colors. */
+  try{
+    if(localStorage.getItem("mergenScopePalette")==="cb"){
+      document.documentElement.setAttribute("data-palette","cb");
+    }
+  }catch(_){}
+</script>
 </head>
 <body>
 <div class="app-shell">
@@ -191,6 +225,10 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-sans);-webkit
         </span>
       </a>
       <span class="brand-actions" aria-hidden="false">
+        <button id="palette-toggle" class="palette-toggle" type="button" aria-pressed="false" title="Toggle color-blind safe trace palette (Wong/Okabe-Ito)">
+          <span class="swatches" aria-hidden="true"><i class="sw1"></i><i class="sw2"></i><i class="sw3"></i></span>
+          <span class="label-text">Color-blind</span>
+        </button>
         <span class="brand-rose" aria-hidden="true"></span>
         <a href="./index.html">Overview</a>
         <a href="https://github.com/alpgoxd/mergen-scope" target="_blank" rel="noopener">GitHub</a>
@@ -244,6 +282,27 @@ if(!AppController.AppRoot){
   throw new Error("AppController.AppRoot is not available.");
 }
 createRoot(document.getElementById("root")).render(h(AppController.AppRoot));
+
+(function(){
+  var btn=document.getElementById("palette-toggle");
+  if(!btn)return;
+  function sync(){
+    var on=document.documentElement.getAttribute("data-palette")==="cb";
+    btn.setAttribute("aria-pressed",on?"true":"false");
+  }
+  sync();
+  btn.addEventListener("click",function(){
+    var on=document.documentElement.getAttribute("data-palette")==="cb";
+    if(on){
+      document.documentElement.removeAttribute("data-palette");
+      try{localStorage.removeItem("mergenScopePalette");}catch(_){}
+    }else{
+      document.documentElement.setAttribute("data-palette","cb");
+      try{localStorage.setItem("mergenScopePalette","cb");}catch(_){}
+    }
+    sync();
+  });
+})();
 </script>
 </body></html>
 
