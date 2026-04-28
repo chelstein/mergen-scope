@@ -2436,7 +2436,7 @@ function useAppController(){
   },[getXDomainHz]);
 
 
-  var mKeys=["Type","Mode","Date","Center Freq","Span","Start","Stop","Ref Level","Rf Att","RBW","VBW","SWT","Preamplifier","Detector","Trace Mode","Sweep Count"];
+  var mKeys=["Type","Mode","Date","Center Freq","Span","Start","Stop","Ref Level","Rf Att","RBW","VBW","SWT","Preamplifier","Detector","Trace Mode","Sweep Count","Format","Sample Rate","Channels","Channel","Sample Count","FFT Size","Window","Overlap","Frames Averaged","Peak","RMS","Crest Factor","A-weighted RMS","C-weighted RMS","Fundamental","THD+N","SNR (est.)"];
   var hasData=files.length>0;
   var yU=activePaneModel&&activePaneModel.axisInfo?activePaneModel.axisInfo.yUnit:"dBm";
   var toolbarYDivLabel=(activePaneTickModel&&isFinite(activePaneTickModel.yDiv))?formatDivLabel(Math.abs(activePaneTickModel.yDiv),yU||""):"--";
