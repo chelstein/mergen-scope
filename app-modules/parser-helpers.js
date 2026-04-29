@@ -1382,6 +1382,103 @@
     return {data:data,fftSize:N,frames:frames,hop:hop};
   }
 
+  function computeHdRadioMetrics(traceData,centerFreqHz){
+    if(!Array.isArray(traceData)||!traceData.length||!isFinite(centerFreqHz))return null;
+    var spec=[];
+    for(var k=0;k<traceData.length;k++){
+      var pt=traceData[k];
+      var f=Number(pt.freq),db=Number(pt.amp);
+      if(!isFinite(f)||!isFinite(db))continue;
+      spec.push({freq:f,db:db});
+    }
+    if(spec.length<128)return null;
+    function bandStats(loHz,hiHz){
+      var sumPwr=0,count=0,maxDb=-Infinity;
+      for(var i=0;i<spec.length;i++){
+        if(spec[i].freq>=loHz&&spec[i].freq<=hiHz){
+          var lin=Math.pow(10,spec[i].db/20);
+          sumPwr+=lin*lin;
+          count++;
+          if(spec[i].db>maxDb)maxDb=spec[i].db;
+        }
+      }
+      if(!count||sumPwr<=0)return null;
+      return {avgDb:10*Math.log10(sumPwr/count),peakDb:maxDb,bins:count};
+    }
+    var carrier=bandStats(centerFreqHz-5000,centerFreqHz+5000);
+    if(!carrier)return null;
+    var carrierPeak=carrier.peakDb;
+    var lowerOuter=bandStats(centerFreqHz-200000,centerFreqHz-129000);
+    var upperOuter=bandStats(centerFreqHz+129000,centerFreqHz+200000);
+    var lowerNoise=bandStats(centerFreqHz-260000,centerFreqHz-240000);
+    var upperNoise=bandStats(centerFreqHz+240000,centerFreqHz+260000);
+    var hasLowerWindow=lowerOuter!=null;
+    var hasUpperWindow=upperOuter!=null;
+    if(!hasLowerWindow&&!hasUpperWindow)return null;
+    var lowerRel=lowerOuter?lowerOuter.avgDb-carrierPeak:null;
+    var upperRel=upperOuter?upperOuter.avgDb-carrierPeak:null;
+    var lowerNoiseRel=lowerNoise?lowerNoise.avgDb-carrierPeak:null;
+    var upperNoiseRel=upperNoise?upperNoise.avgDb-carrierPeak:null;
+    var symmetryDb=null;
+    if(lowerRel!=null&&upperRel!=null)symmetryDb=Math.abs(upperRel-lowerRel);
+    function aboveNoise(rel,noiseRel){
+      if(rel==null)return false;
+      var floor=noiseRel!=null?noiseRel:-60;
+      return rel>floor+6;
+    }
+    var lowerActive=aboveNoise(lowerRel,lowerNoiseRel);
+    var upperActive=aboveNoise(upperRel,upperNoiseRel);
+    var hdDetected=lowerActive&&upperActive&&symmetryDb!=null&&symmetryDb<=6;
+    var maxRel=null;
+    if(lowerRel!=null)maxRel=lowerRel;
+    if(upperRel!=null&&(maxRel==null||upperRel>maxRel))maxRel=upperRel;
+    var maskCategory=null;
+    var maskCompliance=null;
+    if(hdDetected&&maxRel!=null){
+      if(maxRel<=-19){maskCategory="-20 dBc hybrid";maskCompliance="PASS";}
+      else if(maxRel<=-13.5){maskCategory="-14 dBc upgrade";maskCompliance="PASS";}
+      else if(maxRel<=-9.5){maskCategory="-10 dBc all-digital";maskCompliance="PASS";}
+      else {maskCategory="exceeds -10 dBc";maskCompliance="FAIL";}
+    }
+    function clamp(x,lo,hi){return Math.max(lo,Math.min(hi,x));}
+    var detectScore=hdDetected?30:0;
+    var symScore=null;
+    if(symmetryDb==null)symScore=0;
+    else if(symmetryDb<=1)symScore=25;
+    else if(symmetryDb<=3)symScore=20;
+    else if(symmetryDb<=6)symScore=10;
+    else symScore=Math.max(0,10-(symmetryDb-6)*1.5);
+    var maskScore;
+    if(!hdDetected)maskScore=0;
+    else if(maskCompliance==="PASS")maskScore=30;
+    else maskScore=Math.max(0,30-(maxRel-(-9.5))*4);
+    var levelScore;
+    if(!hdDetected||maxRel==null)levelScore=0;
+    else if(maxRel>=-22&&maxRel<=-13)levelScore=15;
+    else if(maxRel<-22)levelScore=clamp(15+(maxRel+22)*1.5,0,15);
+    else levelScore=clamp(15-(maxRel+13)*1.2,0,15);
+    var hdScore=Math.round(detectScore+symScore+maskScore+levelScore);
+    hdScore=clamp(hdScore,0,100);
+    return {
+      detected:hdDetected,
+      lowerSidebandRelDb:lowerRel,
+      upperSidebandRelDb:upperRel,
+      lowerNoiseRelDb:lowerNoiseRel,
+      upperNoiseRelDb:upperNoiseRel,
+      symmetryDb:symmetryDb,
+      maxSidebandRelDb:maxRel,
+      maskCategory:maskCategory,
+      maskCompliance:maskCompliance,
+      hdScore:hdScore,
+      subScores:{
+        detection:Math.round(detectScore),
+        symmetry:Math.round(symScore),
+        mask:Math.round(maskScore),
+        level:Math.round(levelScore)
+      }
+    };
+  }
+
   function buildIqResult(arrayBuffer,fileName,format,sampleRate,centerFreqHz,opts,extraMeta){
     _fc++;
     var fc=_fc;
@@ -1406,6 +1503,23 @@
     };
     if(extraMeta&&typeof extraMeta==="object"){
       Object.keys(extraMeta).forEach(function(k){meta[k]=extraMeta[k];});
+    }
+    var hd=null;
+    try{
+      if(sampleRate>=500000)hd=computeHdRadioMetrics(trace.data,centerFreqHz);
+    }catch(_){hd=null;}
+    if(hd){
+      meta["HD Radio"]=hd.detected?"IBOC sidebands detected":"No IBOC sidebands";
+      if(hd.lowerSidebandRelDb!=null)meta["HD Lower Sideband"]=(hd.lowerSidebandRelDb>=0?"+":"")+hd.lowerSidebandRelDb.toFixed(1)+" dBc";
+      if(hd.upperSidebandRelDb!=null)meta["HD Upper Sideband"]=(hd.upperSidebandRelDb>=0?"+":"")+hd.upperSidebandRelDb.toFixed(1)+" dBc";
+      if(hd.symmetryDb!=null)meta["HD Sideband Symmetry"]=hd.symmetryDb.toFixed(2)+" dB";
+      if(hd.maskCategory){
+        meta["HD Mask"]=hd.maskCompliance+" · "+hd.maskCategory+(hd.maxSidebandRelDb!=null?(" · max "+hd.maxSidebandRelDb.toFixed(1)+" dBc"):"");
+      }
+      if(hd.detected){
+        var hs=hd.subScores||{};
+        meta["HD Radio Score"]=hd.hdScore+" / 100 · detect "+hs.detection+" · sym "+hs.symmetry+" · mask "+hs.mask+" · level "+hs.level;
+      }
     }
     return {format:"iq",meta:meta,traces:[trace]};
   }
