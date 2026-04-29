@@ -843,6 +843,170 @@
     });
   }
 
+  var IQ_DEFAULT_OPTIONS={
+    iqSampleFormat:"cf32_le",
+    iqSampleRateHz:2400000,
+    iqCenterFreqHz:0
+  };
+
+  function isIqFileName(fileName){
+    return /\.(cfile|cf32|fc32|cs16|sc16|cu8)$/i.test(String(fileName||""));
+  }
+  function isSigmfMetaFileName(fileName){
+    return /\.sigmf-meta$/i.test(String(fileName||""));
+  }
+  function isSigmfDataFileName(fileName){
+    return /\.sigmf-data$/i.test(String(fileName||""));
+  }
+  function getSigmfBasename(fileName){
+    return String(fileName||"").replace(/^.*[\\/]/,"").replace(/\.sigmf-(data|meta)$/i,"");
+  }
+  function guessIqFormatFromName(fileName){
+    var name=String(fileName||"").toLowerCase();
+    if(/\.(cs16|sc16|ci16)(\.|$)/.test(name))return "ci16_le";
+    if(/\.cu8(\.|$)/.test(name))return "cu8";
+    if(/\.(cfile|cf32|fc32)(\.|$)/.test(name))return "cf32_le";
+    return null;
+  }
+
+  function decodeIqBuffer(arrayBuffer,format){
+    var fmt=String(format||"cf32_le").toLowerCase().replace(/-/g,"_");
+    if(fmt==="cf32_le"||fmt==="cf32"||fmt==="fc32"||fmt==="rf32_iq"){
+      var floats=new Float32Array(arrayBuffer);
+      var n=Math.floor(floats.length/2);
+      var I=new Float32Array(n),Q=new Float32Array(n);
+      for(var i=0;i<n;i++){I[i]=floats[2*i];Q[i]=floats[2*i+1];}
+      return {I:I,Q:Q};
+    }
+    if(fmt==="ci16_le"||fmt==="ci16"||fmt==="cs16"||fmt==="sc16"||fmt==="ri16_iq"){
+      var ints=new Int16Array(arrayBuffer);
+      var n2=Math.floor(ints.length/2);
+      var I2=new Float32Array(n2),Q2=new Float32Array(n2);
+      for(var j=0;j<n2;j++){I2[j]=ints[2*j]/32768;Q2[j]=ints[2*j+1]/32768;}
+      return {I:I2,Q:Q2};
+    }
+    if(fmt==="cu8"||fmt==="ru8_iq"){
+      var bytes=new Uint8Array(arrayBuffer);
+      var n3=Math.floor(bytes.length/2);
+      var I3=new Float32Array(n3),Q3=new Float32Array(n3);
+      for(var k=0;k<n3;k++){I3[k]=(bytes[2*k]-127.5)/127.5;Q3[k]=(bytes[2*k+1]-127.5)/127.5;}
+      return {I:I3,Q:Q3};
+    }
+    throw new Error("Unsupported IQ sample format: "+format);
+  }
+
+  function computeIqFftTrace(I,Q,sampleRate,centerFreqHz,opts){
+    opts=normalizeAudioFftOptions(opts);
+    var len=I.length;
+    if(!len)throw new Error("IQ stream contains no samples.");
+    var N=opts.fftSize;
+    while(N>len)N>>=1;
+    if(N<256)throw new Error("IQ stream is too short for the requested FFT size.");
+    var hop=Math.max(1,Math.floor(N*(1-opts.overlap)));
+    var winFn=(AUDIO_WINDOWS[opts.window]||AUDIO_WINDOWS.hann).fn;
+    var win=winFn(N);
+    var winSum=0;for(var w=0;w<N;w++)winSum+=win[w];
+    var sum=new Float64Array(N);
+    var re=new Float64Array(N);
+    var im=new Float64Array(N);
+    var frames=0;
+    for(var start=0;start+N<=len;start+=hop){
+      for(var s=0;s<N;s++){
+        var ws=win[s];
+        re[s]=I[start+s]*ws;
+        im[s]=Q[start+s]*ws;
+      }
+      radix2FFT(re,im);
+      for(var b=0;b<N;b++)sum[b]+=Math.sqrt(re[b]*re[b]+im[b]*im[b]);
+      frames++;
+    }
+    if(!frames){
+      for(var z=0;z<N;z++){
+        var wz=win[z];
+        re[z]=z<len?I[z]*wz:0;
+        im[z]=z<len?Q[z]*wz:0;
+      }
+      radix2FFT(re,im);
+      for(var b2=0;b2<N;b2++)sum[b2]=Math.sqrt(re[b2]*re[b2]+im[b2]*im[b2]);
+      frames=1;
+    }
+    var data=[];
+    var half=N>>1;
+    for(var k=0;k<N;k++){
+      var binIdx=(k+half)%N;
+      var avg=sum[binIdx]/frames;
+      var amp=avg/winSum;
+      var binFreq=(k-half)*sampleRate/N;
+      data.push({freq:centerFreqHz+binFreq,amp:20*Math.log10(amp+1e-12)});
+    }
+    return {data:data,fftSize:N,frames:frames,hop:hop};
+  }
+
+  function buildIqResult(arrayBuffer,fileName,format,sampleRate,centerFreqHz,opts,extraMeta){
+    _fc++;
+    var fc=_fc;
+    var iq=decodeIqBuffer(arrayBuffer,format);
+    if(!iq.I.length)throw new Error("IQ file produced zero samples.");
+    var result=computeIqFftTrace(iq.I,iq.Q,sampleRate,centerFreqHz,opts);
+    var prefix=String(fileName||"iq").replace(/^.*[\\/]/,"").replace(/\.[^.]+$/,"")+" ";
+    var trace=makeTrace(prefix,fileName,"IQ_FFT",fc);
+    trace.data=normalizeTraceData(result.data);
+    trace.units={x:"Hz",y:"dBFS"};
+    trace.kind="raw";
+    var meta={
+      "Format":"IQ",
+      "Sample Format":format,
+      "Sample Rate":{value:sampleRate,unit:"Hz"},
+      "Center Frequency":{value:centerFreqHz,unit:"Hz"},
+      "Sample Count":iq.I.length,
+      "FFT Size":result.fftSize,
+      "Window":(AUDIO_WINDOWS[opts.window]&&AUDIO_WINDOWS[opts.window].label)||opts.window,
+      "Overlap":Math.round(opts.overlap*100)+"%",
+      "Frames Averaged":result.frames
+    };
+    if(extraMeta&&typeof extraMeta==="object"){
+      Object.keys(extraMeta).forEach(function(k){meta[k]=extraMeta[k];});
+    }
+    return {format:"iq",meta:meta,traces:[trace]};
+  }
+
+  function parseIqFile(arrayBuffer,fileName,options){
+    var defaults=Object.assign({},IQ_DEFAULT_OPTIONS,AUDIO_DEFAULT_OPTIONS);
+    var merged=Object.assign({},defaults,options||{});
+    var format=merged.iqSampleFormat||guessIqFormatFromName(fileName)||"cf32_le";
+    var sr=Number(merged.iqSampleRateHz);
+    if(!isFinite(sr)||sr<=0)throw new Error("IQ sample rate must be a positive number.");
+    var cf=Number(merged.iqCenterFreqHz);
+    if(!isFinite(cf))cf=0;
+    return buildIqResult(arrayBuffer,fileName,format,sr,cf,normalizeAudioFftOptions(merged),null);
+  }
+
+  function parseSigmfPair(metaText,dataArrayBuffer,baseName,options){
+    var meta;
+    try{meta=JSON.parse(String(metaText||""));}
+    catch(e){throw new Error("SigMF metadata is not valid JSON: "+(e&&e.message||e));}
+    var globalMeta=meta&&meta.global?meta.global:{};
+    var captures=Array.isArray(meta&&meta.captures)?meta.captures:[];
+    var firstCapture=captures[0]||{};
+    var datatype=String(globalMeta["core:datatype"]||"cf32_le").toLowerCase();
+    var sr=Number(globalMeta["core:sample_rate"]);
+    if(!isFinite(sr)||sr<=0){
+      sr=Number(options&&options.iqSampleRateHz)||IQ_DEFAULT_OPTIONS.iqSampleRateHz;
+    }
+    var cf=Number(firstCapture["core:frequency"]);
+    if(!isFinite(cf))cf=Number(options&&options.iqCenterFreqHz)||0;
+    var fmt=datatype.replace(/-/g,"_");
+    var defaults=Object.assign({},IQ_DEFAULT_OPTIONS,AUDIO_DEFAULT_OPTIONS);
+    var merged=normalizeAudioFftOptions(Object.assign({},defaults,options||{}));
+    var extra={};
+    if(globalMeta["core:hw"])extra["Hardware"]=String(globalMeta["core:hw"]);
+    if(globalMeta["core:author"])extra["Author"]=String(globalMeta["core:author"]);
+    if(globalMeta["core:description"])extra["Description"]=String(globalMeta["core:description"]);
+    if(firstCapture["core:datetime"])extra["Capture Time"]=String(firstCapture["core:datetime"]);
+    if(globalMeta["core:version"])extra["SigMF Version"]=String(globalMeta["core:version"]);
+    return buildIqResult(dataArrayBuffer,baseName+".sigmf-data",fmt,sr,cf,merged,extra);
+  }
+
   global.ParserHelpers={
     resetParserFileCounter:resetParserFileCounter,
     syncParserFileCounter:syncParserFileCounter,
@@ -864,6 +1028,13 @@
     normalizeAudioFftOptions:normalizeAudioFftOptions,
     isSpecMaskFileName:isSpecMaskFileName,
     parseSpecMaskJson:parseSpecMaskJson,
-    buildMaskComplianceReport:buildMaskComplianceReport
+    buildMaskComplianceReport:buildMaskComplianceReport,
+    isIqFileName:isIqFileName,
+    isSigmfMetaFileName:isSigmfMetaFileName,
+    isSigmfDataFileName:isSigmfDataFileName,
+    getSigmfBasename:getSigmfBasename,
+    parseIqFile:parseIqFile,
+    parseSigmfPair:parseSigmfPair,
+    IQ_DEFAULT_OPTIONS:IQ_DEFAULT_OPTIONS
   };
 })(window);

@@ -1176,6 +1176,21 @@
           )
         )
       ):null,
+      p.setIqOptions?h("div",{style:{border:"1px solid var(--border)",borderRadius:6,padding:"6px 8px",display:"flex",flexDirection:"column",gap:4,background:"var(--card)"}},
+        h("div",{style:{fontSize:10,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"var(--muted)"}},"IQ defaults · used unless SigMF metadata overrides"),
+        h("div",{style:{display:"grid",gridTemplateColumns:"auto 1fr",gap:"4px 8px",fontSize:11,alignItems:"center"}},
+          h("label",{htmlFor:"iq-format",style:{color:"var(--muted)"}},"Format"),
+          h("select",{id:"iq-format",value:(p.iqOptions&&p.iqOptions.iqSampleFormat)||"cf32_le",onChange:function(ev){p.setIqOptions(Object.assign({},p.iqOptions,{iqSampleFormat:ev.target.value}));},style:{fontSize:11,padding:"2px 4px",background:"var(--bg)",color:"var(--text)",border:"1px solid var(--border)",borderRadius:4}},
+            h("option",{key:"cf32",value:"cf32_le"},"cf32_le (.cfile)"),
+            h("option",{key:"ci16",value:"ci16_le"},"ci16_le (.cs16)"),
+            h("option",{key:"cu8",value:"cu8"},"cu8 (RTL-SDR)")
+          ),
+          h("label",{htmlFor:"iq-sr",style:{color:"var(--muted)"}},"Rate (Hz)"),
+          h("input",{id:"iq-sr",type:"number",min:"1",step:"1",value:String((p.iqOptions&&p.iqOptions.iqSampleRateHz)||2400000),onChange:function(ev){p.setIqOptions(Object.assign({},p.iqOptions,{iqSampleRateHz:Number(ev.target.value)}));},style:{fontSize:11,padding:"2px 4px",background:"var(--bg)",color:"var(--text)",border:"1px solid var(--border)",borderRadius:4,fontFamily:"monospace"}}),
+          h("label",{htmlFor:"iq-cf",style:{color:"var(--muted)"}},"Center (Hz)"),
+          h("input",{id:"iq-cf",type:"number",step:"1",value:String((p.iqOptions&&p.iqOptions.iqCenterFreqHz)||0),onChange:function(ev){p.setIqOptions(Object.assign({},p.iqOptions,{iqCenterFreqHz:Number(ev.target.value)}));},style:{fontSize:11,padding:"2px 4px",background:"var(--bg)",color:"var(--text)",border:"1px solid var(--border)",borderRadius:4,fontFamily:"monospace"}})
+        )
+      ):null,
       h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
         h("button",{className:"clr-btn",title:"Remove all imported files, traces, markers, and analysis results from the current workspace.",onClick:function(){if(hasData&&window.confirm("Clear all files and traces?")&&p.clearAllFiles)p.clearAllFiles();},disabled:!hasData,style:{background:"transparent",border:"1px solid var(--border)",color:"var(--muted)",borderRadius:6,padding:"6px 10px",cursor:hasData?"pointer":"not-allowed",fontSize:12,fontWeight:500,whiteSpace:"nowrap",lineHeight:"1.4",opacity:hasData?1:0.45,width:"100%"}},"Clear Workspace")
       ),
