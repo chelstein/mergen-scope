@@ -1254,6 +1254,33 @@
       if(fs.composite!=null)subParts+=" · MPX "+fs.composite;
       meta["FM Broadcast Score"]=fmMetrics.fmScore+" / 100 · "+subParts;
     }
+    var sameMessage=null;
+    try{sameMessage=decodeEasSameMessage(samples,sampleRate);}catch(_){sameMessage=null;}
+    if(sameMessage&&(sameMessage.headers.length||sameMessage.endOfMessage)){
+      if(sameMessage.headers.length){
+        var primary=sameMessage.headers[0];
+        meta["EAS SAME Header"]=primary.raw;
+        if(primary.originator)meta["EAS Originator"]=primary.originator+(primary.originatorName?" · "+primary.originatorName:"");
+        if(primary.event)meta["EAS Event"]=primary.event+(primary.eventName?" · "+primary.eventName:"");
+        if(primary.locations&&primary.locations.length){
+          meta["EAS Locations"]=primary.locations.map(function(l){
+            var subTxt=l.subdivision==="0"?"":(" subdiv "+l.subdivision);
+            return l.raw+(l.stateAbbr?(" ("+l.stateAbbr+(subTxt||"")+")"):"");
+          }).join(" · ");
+        }
+        if(primary.durationMin!=null){
+          var dh=Math.floor(primary.durationMin/60),dm=primary.durationMin%60;
+          meta["EAS Duration"]=dh+"h "+dm.toString().padStart(2,"0")+"m";
+        }
+        if(primary.issued){
+          var iz=primary.issued;
+          meta["EAS Issued"]="Julian day "+iz.julianDay+" · "+iz.hour.toString().padStart(2,"0")+":"+iz.minute.toString().padStart(2,"0")+" UTC";
+        }
+        if(primary.stationId)meta["EAS Station ID"]=primary.stationId;
+        if(sameMessage.headers.length>1)meta["EAS Header Repeats"]=sameMessage.headers.length+" copies decoded";
+      }
+      if(sameMessage.endOfMessage)meta["EAS End-of-Message"]="NNNN sequence detected";
+    }
     var spectrogram=null;
     try{spectrogram=computeAudioSpectrogram(samples,sampleRate,opts,300);}catch(_){spectrogram=null;}
     var correlationBuffer=null;
@@ -1479,6 +1506,260 @@
     };
   }
 
+  /* ---- SAME (Specific Area Message Encoding) decoder ---------------------
+     EAS SAME headers are AFSK at 520.83 baud, mark = 2083.33 Hz,
+     space = 1562.5 Hz, framed 8N1 LSB-first ASCII. Each header is
+     transmitted three times preceded by a 0xAB preamble; we only need
+     one good decode. End-of-message is "NNNN" three times. */
+  var EAS_EVENT_CODES={
+    EAN:"Emergency Action Notification",
+    EAT:"Emergency Action Termination",
+    NPT:"National Periodic Test",
+    NIC:"National Information Center",
+    DMO:"Practice / Demo Warning",
+    RWT:"Required Weekly Test",
+    RMT:"Required Monthly Test",
+    ADR:"Administrative Message",
+    AVA:"Avalanche Watch",
+    AVW:"Avalanche Warning",
+    BLU:"Blue Alert",
+    BZW:"Blizzard Warning",
+    CAE:"Child Abduction Emergency",
+    CDW:"Civil Danger Warning",
+    CEM:"Civil Emergency Message",
+    CFA:"Coastal Flood Watch",
+    CFW:"Coastal Flood Warning",
+    DSW:"Dust Storm Warning",
+    EQW:"Earthquake Warning",
+    EVI:"Evacuation Immediate",
+    EWW:"Extreme Wind Warning",
+    FFA:"Flash Flood Watch",
+    FFS:"Flash Flood Statement",
+    FFW:"Flash Flood Warning",
+    FLA:"Flood Watch",
+    FLS:"Flood Statement",
+    FLW:"Flood Warning",
+    FRW:"Fire Warning",
+    HLS:"Hurricane Local Statement",
+    HMW:"Hazardous Materials Warning",
+    HUA:"Hurricane Watch",
+    HUW:"Hurricane Warning",
+    HWA:"High Wind Watch",
+    HWW:"High Wind Warning",
+    LAE:"Local Area Emergency",
+    LEW:"Law Enforcement Warning",
+    NUW:"Nuclear Power Plant Warning",
+    RHW:"Radiological Hazard Warning",
+    SMW:"Special Marine Warning",
+    SPS:"Special Weather Statement",
+    SPW:"Shelter In Place Warning",
+    SQW:"Snow Squall Warning",
+    SSA:"Storm Surge Watch",
+    SSW:"Storm Surge Warning",
+    SVA:"Severe Thunderstorm Watch",
+    SVR:"Severe Thunderstorm Warning",
+    SVS:"Severe Weather Statement",
+    TOA:"Tornado Watch",
+    TOE:"911 Telephone Outage Emergency",
+    TOR:"Tornado Warning",
+    TRA:"Tropical Storm Watch",
+    TRW:"Tropical Storm Warning",
+    TSA:"Tsunami Watch",
+    TSW:"Tsunami Warning",
+    VOW:"Volcano Warning",
+    WSA:"Winter Storm Watch",
+    WSW:"Winter Storm Warning"
+  };
+  var EAS_ORIGINATOR_NAMES={
+    EAS:"Broadcast station / cable operator",
+    CIV:"Civil authorities",
+    WXR:"NOAA / National Weather Service",
+    PEP:"Primary Entry Point (FEMA)",
+    EAN:"Emergency Action Notification network"
+  };
+  var EAS_STATE_FIPS={
+    "01":"AL","02":"AK","04":"AZ","05":"AR","06":"CA","08":"CO","09":"CT",
+    "10":"DE","11":"DC","12":"FL","13":"GA","15":"HI","16":"ID","17":"IL",
+    "18":"IN","19":"IA","20":"KS","21":"KY","22":"LA","23":"ME","24":"MD",
+    "25":"MA","26":"MI","27":"MN","28":"MS","29":"MO","30":"MT","31":"NE",
+    "32":"NV","33":"NH","34":"NJ","35":"NM","36":"NY","37":"NC","38":"ND",
+    "39":"OH","40":"OK","41":"OR","42":"PA","44":"RI","45":"SC","46":"SD",
+    "47":"TN","48":"TX","49":"UT","50":"VT","51":"VA","53":"WA","54":"WV",
+    "55":"WI","56":"WY","60":"AS","66":"GU","69":"MP","72":"PR","78":"VI"
+  };
+  var SAME_MARK_HZ=2083.333;
+  var SAME_SPACE_HZ=1562.5;
+  var SAME_BAUD=520.833;
+
+  function decodeSameAfsk(samples,sampleRate){
+    if(!samples||!samples.length)return {bytes:[],bits:[]};
+    if(sampleRate<4500)return {bytes:[],bits:[],note:"sample rate too low for SAME (need >= 4500 Hz)"};
+    var samplesPerBit=sampleRate/SAME_BAUD;
+    var bitWindow=Math.max(8,Math.floor(samplesPerBit*0.6));
+    var totalBits=Math.floor((samples.length-bitWindow)/samplesPerBit);
+    if(totalBits<200)return {bytes:[],bits:[]};
+    function goertzelMag(start,N,freq){
+      var k=Math.round(0.5+(N*freq)/sampleRate);
+      var w=2*Math.PI*k/N;
+      var coeff=2*Math.cos(w);
+      var s0=0,s1=0,s2=0;
+      for(var i=0;i<N;i++){
+        s0=samples[start+i]+coeff*s1-s2;
+        s2=s1;s1=s0;
+      }
+      return s1*s1+s2*s2-coeff*s1*s2;
+    }
+    var bestPhase=0,bestEnergy=-Infinity;
+    for(var phaseTry=0;phaseTry<Math.min(samplesPerBit,32);phaseTry+=2){
+      var energy=0,sampled=0;
+      for(var b=0;b<Math.min(totalBits,400);b+=4){
+        var st=Math.floor(phaseTry+b*samplesPerBit);
+        if(st+bitWindow>samples.length)break;
+        var m=goertzelMag(st,bitWindow,SAME_MARK_HZ);
+        var sp=goertzelMag(st,bitWindow,SAME_SPACE_HZ);
+        energy+=Math.abs(m-sp);
+        sampled++;
+      }
+      if(sampled>0&&energy>bestEnergy){bestEnergy=energy;bestPhase=phaseTry;}
+    }
+    var bits=[];
+    var confidences=[];
+    for(var bi=0;bi<totalBits;bi++){
+      var pos=Math.floor(bestPhase+bi*samplesPerBit);
+      if(pos+bitWindow>samples.length)break;
+      var markE=goertzelMag(pos,bitWindow,SAME_MARK_HZ);
+      var spaceE=goertzelMag(pos,bitWindow,SAME_SPACE_HZ);
+      var bit=markE>spaceE?1:0;
+      bits.push(bit);
+      var sum=markE+spaceE;
+      confidences.push(sum>0?Math.abs(markE-spaceE)/sum:0);
+    }
+    return {bits:bits,bestPhase:bestPhase,confidences:confidences};
+  }
+
+  function frameSameBytes(bits){
+    var bytes=[];
+    var i=0;
+    while(i<bits.length-9){
+      if(bits[i]!==0){i++;continue;}
+      var startedAt=i;
+      var byteVal=0;
+      for(var b=0;b<8;b++){
+        if(bits[startedAt+1+b])byteVal|=(1<<b);
+      }
+      var stop=bits[startedAt+9];
+      if(stop===1){
+        bytes.push(byteVal);
+        i=startedAt+10;
+      }else{
+        i=startedAt+1;
+      }
+    }
+    return bytes;
+  }
+
+  function bytesToString(bytes,start,end){
+    var s="";
+    for(var i=start;i<end&&i<bytes.length;i++){
+      var c=bytes[i]&0x7F;
+      if(c>=32&&c<=126)s+=String.fromCharCode(c);
+      else if(c===0)s+=" ";
+      else s+=".";
+    }
+    return s;
+  }
+
+  function findSameHeaders(bytes){
+    var asText=bytesToString(bytes,0,bytes.length);
+    var headers=[];
+    var idx=0;
+    while(true){
+      var found=asText.indexOf("ZCZC",idx);
+      if(found<0)break;
+      var endDash=asText.indexOf("-",found+30);
+      var stop=found+268;
+      var endChar=Math.min(stop,asText.length);
+      var sliceEnd=endChar;
+      var trailingDash=asText.indexOf("- ",found+50);
+      if(trailingDash>0&&trailingDash<sliceEnd)sliceEnd=trailingDash+1;
+      var raw=asText.slice(found,sliceEnd).replace(/[\s ]+$/,"");
+      headers.push({raw:raw,start:found});
+      idx=found+raw.length;
+    }
+    var endOfMessage=asText.indexOf("NNNN")>=0;
+    return {headers:headers,endOfMessage:endOfMessage,decodedText:asText};
+  }
+
+  function parseSameHeader(raw){
+    if(!raw||raw.indexOf("ZCZC")!==0)return null;
+    var body=raw.slice(5);
+    var plusIdx=body.lastIndexOf("+");
+    if(plusIdx<0)return {raw:raw,error:"missing +duration delimiter"};
+    var head=body.slice(0,plusIdx);
+    var tail=body.slice(plusIdx+1);
+    var headParts=head.split("-");
+    if(headParts.length<3)return {raw:raw,error:"missing originator/event/location"};
+    var originator=headParts[0];
+    var event=headParts[1];
+    var locations=[];
+    for(var i=2;i<headParts.length;i++){
+      var loc=headParts[i];
+      if(!loc)continue;
+      if(/^\d{6}$/.test(loc)){
+        var p=loc[0];
+        var ss=loc.substr(1,2);
+        var ccc=loc.substr(3,3);
+        locations.push({raw:loc,subdivision:p,stateFips:ss,stateAbbr:EAS_STATE_FIPS[ss]||null,countyFips:ccc});
+      }
+    }
+    var durationMin=null,issuedRaw=null,stationId=null;
+    var tailParts=tail.split("-");
+    if(tailParts[0]&&/^\d{4}$/.test(tailParts[0])){
+      var hh=parseInt(tailParts[0].substr(0,2),10);
+      var mm=parseInt(tailParts[0].substr(2,2),10);
+      durationMin=hh*60+mm;
+    }
+    if(tailParts[1]&&/^\d{7}$/.test(tailParts[1]))issuedRaw=tailParts[1];
+    if(tailParts[2])stationId=tailParts[2].replace(/\s/g,"");
+    var issued=null;
+    if(issuedRaw){
+      issued={
+        julianDay:parseInt(issuedRaw.substr(0,3),10),
+        hour:parseInt(issuedRaw.substr(3,2),10),
+        minute:parseInt(issuedRaw.substr(5,2),10),
+        raw:issuedRaw
+      };
+    }
+    return {
+      raw:raw,
+      originator:originator,
+      originatorName:EAS_ORIGINATOR_NAMES[originator]||null,
+      event:event,
+      eventName:EAS_EVENT_CODES[event]||null,
+      locations:locations,
+      durationMin:durationMin,
+      issued:issued,
+      stationId:stationId
+    };
+  }
+
+  function decodeEasSameMessage(samples,sampleRate){
+    var afsk=decodeSameAfsk(samples,sampleRate);
+    if(!afsk||!afsk.bits||!afsk.bits.length)return null;
+    var bytes=frameSameBytes(afsk.bits);
+    if(!bytes.length)return null;
+    var found=findSameHeaders(bytes);
+    if(!found.headers.length&&!found.endOfMessage)return null;
+    var parsed=found.headers.map(parseSameHeader).filter(Boolean);
+    return {
+      headers:parsed,
+      rawHeaders:found.headers.map(function(h){return h.raw;}),
+      endOfMessage:found.endOfMessage,
+      bitCount:afsk.bits.length,
+      decodedBytes:bytes.length
+    };
+  }
+
   function computeHdRadioMetrics(traceData,centerFreqHz){
     if(!Array.isArray(traceData)||!traceData.length||!isFinite(centerFreqHz))return null;
     var spec=[];
@@ -1676,6 +1957,10 @@
     parseAudioFromChannels:parseAudioFromChannels,
     computeAudioSpectrogram:computeAudioSpectrogram,
     compareTwoAudioSources:compareTwoAudioSources,
+    decodeEasSameMessage:decodeEasSameMessage,
+    EAS_EVENT_CODES:EAS_EVENT_CODES,
+    EAS_ORIGINATOR_NAMES:EAS_ORIGINATOR_NAMES,
+    EAS_STATE_FIPS:EAS_STATE_FIPS,
     AUDIO_WINDOWS:AUDIO_WINDOWS,
     AUDIO_FFT_SIZES:AUDIO_FFT_SIZES,
     AUDIO_DEFAULT_OPTIONS:AUDIO_DEFAULT_OPTIONS,
