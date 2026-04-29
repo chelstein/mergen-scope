@@ -883,6 +883,130 @@
     };
   }
 
+  function computeAmBroadcastMetrics(samples,sampleRate,fftSeries,baseMetrics){
+    if(!samples||!samples.length)return null;
+    var n=samples.length;
+    var maxPos=0,maxNeg=0;
+    for(var i=0;i<n;i++){
+      var x=samples[i];
+      if(x>maxPos)maxPos=x;
+      if(-x>maxNeg)maxNeg=-x;
+    }
+    var ref=Math.max(maxPos,maxNeg)||1e-12;
+    var modPosPercent=(maxPos/ref)*100;
+    var modNegPercent=(maxNeg/ref)*100;
+    var asymmetryDb=20*Math.log10((maxPos+1e-12)/(maxNeg+1e-12));
+    var spec=[];
+    var data=fftSeries&&fftSeries.data?fftSeries.data:[];
+    for(var k=0;k<data.length;k++){
+      spec.push({freq:Number(data[k].freq),db:Number(data[k].amp)});
+    }
+    function levelAtBand(centerHz,halfWindowHz){
+      var maxDb=-Infinity;
+      for(var i=0;i<spec.length;i++){
+        if(Math.abs(spec[i].freq-centerHz)<=halfWindowHz&&spec[i].db>maxDb)maxDb=spec[i].db;
+      }
+      return isFinite(maxDb)?maxDb:null;
+    }
+    function levelAvgInRange(loHz,hiHz){
+      var sum=0,count=0;
+      for(var i=0;i<spec.length;i++){
+        if(spec[i].freq>=loHz&&spec[i].freq<=hiHz){sum+=spec[i].db;count++;}
+      }
+      return count?sum/count:null;
+    }
+    var ref1k=levelAvgInRange(800,1200);
+    var hum60Db=levelAtBand(60,3);
+    var hum120Db=levelAtBand(120,3);
+    var hum180Db=levelAtBand(180,3);
+    var hum240Db=levelAtBand(240,3);
+    var hum50Db=levelAtBand(50,3);
+    var hum100Db=levelAtBand(100,3);
+    var hum150Db=levelAtBand(150,3);
+    var hum200Db=levelAtBand(200,3);
+    var humPeakDb=null;
+    [hum60Db,hum120Db,hum180Db,hum240Db,hum50Db,hum100Db,hum150Db,hum200Db].forEach(function(v){
+      if(v!=null&&(humPeakDb==null||v>humPeakDb))humPeakDb=v;
+    });
+    var nyquist=sampleRate/2;
+    var floorDb=ref1k!=null?ref1k-10:-50;
+    var audioBwHz=null;
+    for(var i=spec.length-1;i>=0;i--){
+      if(spec[i].freq>nyquist)continue;
+      if(spec[i].db>=floorDb){audioBwHz=spec[i].freq;break;}
+    }
+    var nrsc102=levelAtBand(10200,150);
+    var nrsc11=levelAtBand(11000,150);
+    var nrsc15=levelAtBand(15000,300);
+    var maskFloor=ref1k!=null?ref1k:-30;
+    var nrscOverages=[];
+    if(nrsc102!=null)nrscOverages.push({label:"10.2 kHz",overDb:nrsc102-(maskFloor-30)});
+    if(nrsc11!=null)nrscOverages.push({label:"11 kHz",overDb:nrsc11-(maskFloor-40)});
+    if(nrsc15!=null&&nyquist>15000)nrscOverages.push({label:"15 kHz",overDb:nrsc15-(maskFloor-60)});
+    var worstOverage=null;
+    nrscOverages.forEach(function(o){if(worstOverage==null||o.overDb>worstOverage.overDb)worstOverage=o;});
+    var nrscPass=worstOverage==null||worstOverage.overDb<=0;
+    function clamp01(x){return Math.max(0,Math.min(1,x));}
+    var symPenalty=clamp01(Math.abs(asymmetryDb)/6);
+    var symScore=20*(1-symPenalty);
+    var nrscScore=nrscPass?25:Math.max(0,25-(worstOverage?worstOverage.overDb:0)*2);
+    var humRel=null;
+    if(humPeakDb!=null&&ref1k!=null)humRel=humPeakDb-ref1k;
+    var humScore;
+    if(humRel==null)humScore=10;
+    else if(humRel<=-50)humScore=15;
+    else if(humRel<=-30)humScore=15-((-30-humRel)*0)+(humRel+50)*-0.25;
+    else humScore=Math.max(0,5-(humRel+30)*0.2);
+    humScore=Math.max(0,Math.min(15,humScore));
+    var bwScore;
+    if(audioBwHz==null)bwScore=7;
+    else if(audioBwHz<3500)bwScore=Math.max(0,8*audioBwHz/3500);
+    else if(audioBwHz<=10500)bwScore=15;
+    else bwScore=Math.max(8,15-((audioBwHz-10500)/2000)*5);
+    bwScore=Math.max(0,Math.min(15,bwScore));
+    var crestDb=baseMetrics&&baseMetrics.crestDb!=null?baseMetrics.crestDb:null;
+    var crestScore;
+    if(crestDb==null)crestScore=8;
+    else if(crestDb<6)crestScore=Math.max(0,crestDb*1.5);
+    else if(crestDb<=15)crestScore=15;
+    else crestScore=Math.max(0,15-(crestDb-15)*1.5);
+    crestScore=Math.max(0,Math.min(15,crestScore));
+    var rmsDb=baseMetrics&&baseMetrics.rmsDbFs!=null?baseMetrics.rmsDbFs:null;
+    var lufsTarget=-24;
+    var lufsScore;
+    if(rmsDb==null)lufsScore=5;
+    else{
+      var dist=Math.abs(rmsDb-lufsTarget);
+      if(dist<=2)lufsScore=10;
+      else if(dist<=6)lufsScore=10-(dist-2)*1.5;
+      else lufsScore=Math.max(0,4-(dist-6)*0.5);
+    }
+    lufsScore=Math.max(0,Math.min(10,lufsScore));
+    var amScore=Math.round(symScore+nrscScore+humScore+bwScore+crestScore+lufsScore);
+    if(amScore<0)amScore=0;if(amScore>100)amScore=100;
+    return {
+      modPosPercent:modPosPercent,
+      modNegPercent:modNegPercent,
+      asymmetryDb:asymmetryDb,
+      humPeakDb:humPeakDb,
+      humPeakRelDb:humRel,
+      hum60Db:hum60Db,hum120Db:hum120Db,hum180Db:hum180Db,
+      hum50Db:hum50Db,hum100Db:hum100Db,hum150Db:hum150Db,
+      audioBwHz:audioBwHz,
+      nrscPass:nrscPass,
+      nrscWorstOverage:worstOverage,
+      amScore:amScore,
+      subScores:{
+        symmetry:Math.round(symScore),
+        nrsc:Math.round(nrscScore),
+        hum:Math.round(humScore),
+        bandwidth:Math.round(bwScore),
+        crest:Math.round(crestScore),
+        loudness:Math.round(lufsScore)
+      }
+    };
+  }
+
   function formatHz(hz){
     if(hz==null||!isFinite(hz))return null;
     if(hz>=1e6)return (hz/1e6).toFixed(3)+" MHz";
@@ -937,6 +1061,23 @@
         var ea=metrics.easAttention;
         meta["EAS Attention"]=formatHz(ea.f1)+" + "+formatHz(ea.f2)+" · "+ea.db1.toFixed(1)+" / "+ea.db2.toFixed(1)+" dBFS · matched";
       }
+    }
+    var amMetrics=null;
+    try{amMetrics=computeAmBroadcastMetrics(samples,sampleRate,result,metrics);}catch(_){amMetrics=null;}
+    if(amMetrics){
+      meta["AM Modulation"]="+"+amMetrics.modPosPercent.toFixed(1)+"% / -"+amMetrics.modNegPercent.toFixed(1)+"% · asymmetry "+(amMetrics.asymmetryDb>=0?"+":"")+amMetrics.asymmetryDb.toFixed(2)+" dB";
+      if(amMetrics.audioBwHz!=null)meta["AM Audio BW"]=formatHz(amMetrics.audioBwHz);
+      if(amMetrics.nrscWorstOverage){
+        var w=amMetrics.nrscWorstOverage;
+        meta["AM NRSC-1 Mask"]=(amMetrics.nrscPass?"PASS":"FAIL")+" · worst "+w.label+" "+(w.overDb>=0?"+":"")+w.overDb.toFixed(1)+" dB";
+      }else if(amMetrics.nrscPass){
+        meta["AM NRSC-1 Mask"]="PASS · no HF content above mask";
+      }
+      if(amMetrics.humPeakRelDb!=null){
+        meta["AM Hum (worst)"]=amMetrics.humPeakRelDb.toFixed(1)+" dB rel 1 kHz";
+      }
+      var s=amMetrics.subScores||{};
+      meta["AM Broadcast Score"]=amMetrics.amScore+" / 100 · sym "+s.symmetry+" · NRSC "+s.nrsc+" · hum "+s.hum+" · BW "+s.bandwidth+" · crest "+s.crest+" · loud "+s.loudness;
     }
     var spectrogram=null;
     try{spectrogram=computeAudioSpectrogram(samples,sampleRate,opts,300);}catch(_){spectrogram=null;}
