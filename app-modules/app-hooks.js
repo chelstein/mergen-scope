@@ -650,6 +650,138 @@ function runInParserWorker(kind,payload){
   });
 }
 
+function _streamFileNameFromUrl(url){
+  try{
+    var u=new URL(url);
+    var host=u.host.replace(/[^a-z0-9]+/gi,"-");
+    var stamp=new Date().toISOString().replace(/[:T]/g,"-").replace(/\..*$/,"");
+    return host+"_"+stamp+".mp3";
+  }catch(_){return "stream_capture.mp3";}
+}
+
+function _resolveHlsUrl(base,ref){
+  try{return new URL(ref,base).toString();}
+  catch(_){return ref;}
+}
+
+function _parseHlsPlaylist(text,baseUrl){
+  var lines=String(text||"").split(/\r?\n/);
+  var segments=[];
+  var nextDuration=null;
+  var isMaster=false;
+  for(var i=0;i<lines.length;i++){
+    var line=lines[i].trim();
+    if(!line)continue;
+    if(line.indexOf("#EXT-X-STREAM-INF")===0){isMaster=true;continue;}
+    if(line.indexOf("#EXTINF")===0){
+      var m=line.match(/^#EXTINF:([0-9.]+)/);
+      nextDuration=m?parseFloat(m[1]):null;
+      continue;
+    }
+    if(line.charAt(0)==="#")continue;
+    segments.push({url:_resolveHlsUrl(baseUrl,line),duration:nextDuration});
+    nextDuration=null;
+  }
+  return {segments:segments,isMaster:isMaster};
+}
+
+function captureStreamFromUrl(url,opts){
+  opts=opts||{};
+  var maxBytes=opts.maxBytes||8*1024*1024;
+  var maxSeconds=opts.maxSeconds||30;
+  var fileName=_streamFileNameFromUrl(url);
+  return new Promise(function(resolve,reject){
+    fetch(url,{mode:"cors",credentials:"omit"}).then(function(response){
+      if(!response.ok){reject(new Error("HTTP "+response.status+" "+(response.statusText||"")+" fetching "+url));return;}
+      var ct=(response.headers.get("content-type")||"").toLowerCase();
+      var isHls=/mpegurl|x-mpegurl/i.test(ct)||/\.m3u8(\?|$)/i.test(url);
+      if(isHls){
+        response.text().then(function(text){
+          var parsed=_parseHlsPlaylist(text,response.url||url);
+          if(!parsed.segments.length){
+            reject(new Error("HLS playlist had no segments. If this is a master playlist, paste a media-playlist URL instead."));
+            return;
+          }
+          if(parsed.isMaster){
+            var first=parsed.segments[0].url;
+            captureStreamFromUrl(first,opts).then(function(r){r.fileName=fileName;resolve(r);},reject);
+            return;
+          }
+          var totalBytes=0,totalSec=0,gotSegments=0;
+          var collected=[];
+          function fetchNext(idx){
+            if(idx>=parsed.segments.length||totalBytes>=maxBytes||totalSec>=maxSeconds){
+              if(!collected.length){reject(new Error("HLS fetch yielded no usable segments."));return;}
+              var merged=new Uint8Array(totalBytes);
+              var off=0;
+              collected.forEach(function(buf){merged.set(new Uint8Array(buf),off);off+=buf.byteLength;});
+              resolve({arrayBuffer:merged.buffer,fileName:fileName,bytes:totalBytes,segments:gotSegments,kind:"hls"});
+              return;
+            }
+            var seg=parsed.segments[idx];
+            fetch(seg.url,{mode:"cors",credentials:"omit"}).then(function(r){
+              if(!r.ok){fetchNext(idx+1);return null;}
+              return r.arrayBuffer();
+            }).then(function(buf){
+              if(buf){
+                collected.push(buf);
+                totalBytes+=buf.byteLength;
+                if(seg.duration)totalSec+=seg.duration;
+                gotSegments++;
+              }
+              fetchNext(idx+1);
+            }).catch(function(){fetchNext(idx+1);});
+          }
+          fetchNext(0);
+        }).catch(reject);
+        return;
+      }
+      var startTime=Date.now();
+      var totalBytes=0;
+      var collected=[];
+      var reader=response.body&&response.body.getReader?response.body.getReader():null;
+      if(!reader){
+        response.arrayBuffer().then(function(buf){
+          var trim=buf.byteLength>maxBytes?buf.slice(0,maxBytes):buf;
+          resolve({arrayBuffer:trim,fileName:fileName,bytes:trim.byteLength,kind:"direct"});
+        }).catch(reject);
+        return;
+      }
+      function pump(){
+        reader.read().then(function(res){
+          if(res.done){
+            if(!totalBytes){reject(new Error("Stream returned no bytes."));return;}
+            var merged=new Uint8Array(totalBytes);
+            var off=0;
+            collected.forEach(function(c){merged.set(c,off);off+=c.byteLength;});
+            resolve({arrayBuffer:merged.buffer,fileName:fileName,bytes:totalBytes,kind:"direct"});
+            return;
+          }
+          if(res.value&&res.value.byteLength){
+            collected.push(res.value);
+            totalBytes+=res.value.byteLength;
+          }
+          var elapsed=(Date.now()-startTime)/1000;
+          if(totalBytes>=maxBytes||elapsed>=maxSeconds){
+            try{reader.cancel();}catch(_){}
+            var merged2=new Uint8Array(totalBytes);
+            var off2=0;
+            collected.forEach(function(c){merged2.set(c,off2);off2+=c.byteLength;});
+            resolve({arrayBuffer:merged2.buffer,fileName:fileName,bytes:totalBytes,kind:"direct"});
+            return;
+          }
+          pump();
+        }).catch(function(err){reject(err);});
+      }
+      pump();
+    }).catch(function(err){
+      var msg=err&&err.message?err.message:String(err);
+      if(/failed to fetch|networkerror/i.test(msg))msg="Network or CORS error. The stream server must send Access-Control-Allow-Origin, or capture via a CORS-enabled proxy.";
+      reject(new Error(msg));
+    });
+  });
+}
+
 function decodeAudioToChannels(arrayBuffer){
   var ACtor=window.AudioContext||window.webkitAudioContext;
   if(!ACtor)return Promise.reject(new Error("Web Audio API is not available in this browser."));
@@ -1719,6 +1851,7 @@ function useIP3Workflow(dep){
     useCrosshair:useCrosshair,
     useSharedCursor:useSharedCursor,
     isFileDragEvent:isFileDragEvent,
+    captureStreamFromUrl:captureStreamFromUrl,
     usePaneLayout:usePaneLayout,
     useAnalysisRegistry:useAnalysisRegistry,
     makeDefaultTouchstoneState:makeDefaultTouchstoneState,

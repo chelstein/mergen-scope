@@ -1326,6 +1326,26 @@
           h("input",{id:"iq-cf",type:"number",step:"1",value:String((p.iqOptions&&p.iqOptions.iqCenterFreqHz)||0),onChange:function(ev){p.setIqOptions(Object.assign({},p.iqOptions,{iqCenterFreqHz:Number(ev.target.value)}));},style:{fontSize:11,padding:"2px 4px",background:"var(--bg)",color:"var(--text)",border:"1px solid var(--border)",borderRadius:4,fontFamily:"monospace"}})
         )
       ):null,
+      p.captureFromStreamUrl?h("div",{style:{border:"1px solid var(--border)",borderRadius:6,padding:"6px 8px",display:"flex",flexDirection:"column",gap:6,background:"var(--card)"}},
+        h("div",{style:{fontSize:10,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"var(--muted)"}},"Stream Capture · HLS / Icecast / direct audio URL"),
+        h("div",{style:{display:"flex",gap:6,alignItems:"center"}},
+          h("input",{
+            type:"text",
+            placeholder:"https://stream.example.com/audio.mp3 or .m3u8",
+            value:p.streamCaptureUrl||"",
+            onChange:function(ev){if(p.setStreamCaptureUrl)p.setStreamCaptureUrl(ev.target.value);},
+            disabled:!!p.streamCaptureBusy,
+            style:{flex:1,minWidth:0,fontSize:11,padding:"4px 6px",background:"var(--bg)",color:"var(--text)",border:"1px solid var(--border)",borderRadius:4,fontFamily:"monospace"}
+          }),
+          h("button",{
+            disabled:!!p.streamCaptureBusy||!String(p.streamCaptureUrl||"").trim(),
+            onClick:function(){if(!p.streamCaptureBusy)p.captureFromStreamUrl(String(p.streamCaptureUrl||"").trim());},
+            title:"Fetch up to 30 seconds / 8 MB from the stream URL and import as an audio file. Requires the stream server to send Access-Control-Allow-Origin (most public Icecast and own-station HLS work).",
+            style:{padding:"4px 10px",border:"1px solid "+((C.accent)||"var(--accent)"),borderRadius:4,background:p.streamCaptureBusy?"transparent":((C.accent)||"var(--accent)")+"14",color:(C.accent)||"var(--accent)",cursor:p.streamCaptureBusy?"wait":"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}
+          },p.streamCaptureBusy?"Capturing…":"Capture")
+        ),
+        h("div",{style:{fontSize:10,color:"var(--muted)",lineHeight:1.45}},"Caps at 30 s / 8 MB. CORS must be allowed by the stream server.")
+      ):null,
       (p.runCrossSourceCompare&&Array.isArray(p.audioFiles)&&p.audioFiles.length>=2)?h("div",{style:{border:"1px solid var(--border)",borderRadius:6,padding:"6px 8px",display:"flex",flexDirection:"column",gap:6,background:"var(--card)"}},
         h("div",{style:{fontSize:10,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"var(--muted)"}},"Cross-Source Correlation · OTA / HD / stream alignment"),
         h("div",{style:{display:"grid",gridTemplateColumns:"auto 1fr",gap:"4px 8px",fontSize:11,alignItems:"center"}},
