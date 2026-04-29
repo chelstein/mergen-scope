@@ -786,12 +786,49 @@
     return hz.toFixed(1)+" Hz";
   }
 
-  function parseAudioFile(arrayBuffer,fileName,options){
+  function parseAudioFromChannels(channels,sampleRate,fileName,options){
     _fc++;
     var fc=_fc;
+    var opts=normalizeAudioFftOptions(options);
+    if(!Array.isArray(channels)||!channels.length)throw new Error("Audio file has no decoded channels.");
+    var ch=channels.length;
+    var samples=selectAudioChannelSamples(channels,opts.channel);
+    var result=computeAudioFftTrace(samples,sampleRate,opts);
+    var prefix=String(fileName||"audio").replace(/^.*[\\/]/,"").replace(/\.[^.]+$/,"")+" ";
+    var label="FFT";
+    if(opts.channel!=="auto")label="FFT_ch"+(parseInt(opts.channel,10)||0);
+    var trace=makeTrace(prefix,fileName,label,fc);
+    trace.data=normalizeTraceData(result.data);
+    trace.units={x:"Hz",y:"dBFS"};
+    var metrics=null;
+    try{metrics=computeAudioMetrics(samples,sampleRate,result);}catch(_){metrics=null;}
+    var meta={
+      "Format":"Audio",
+      "Sample Rate":{value:sampleRate,unit:"Hz"},
+      "Channels":ch,
+      "Channel":opts.channel==="auto"?"mono mix":("ch "+(parseInt(opts.channel,10)||0)),
+      "Sample Count":samples.length,
+      "FFT Size":result.fftSize,
+      "Window":(AUDIO_WINDOWS[opts.window]&&AUDIO_WINDOWS[opts.window].label)||opts.window,
+      "Overlap":Math.round(opts.overlap*100)+"%",
+      "Frames Averaged":result.frames
+    };
+    if(metrics){
+      meta["Peak"]=metrics.peakDbFs.toFixed(2)+" dBFS";
+      meta["RMS"]=metrics.rmsDbFs.toFixed(2)+" dBFS";
+      meta["Crest Factor"]=metrics.crestDb.toFixed(2)+" dB";
+      if(metrics.aRmsDbFs!=null)meta["A-weighted RMS"]=metrics.aRmsDbFs.toFixed(2)+" dBFS(A)";
+      if(metrics.cRmsDbFs!=null)meta["C-weighted RMS"]=metrics.cRmsDbFs.toFixed(2)+" dBFS(C)";
+      if(metrics.fundamentalHz!=null)meta["Fundamental"]=formatHz(metrics.fundamentalHz);
+      if(metrics.thdNPercent!=null)meta["THD+N"]=metrics.thdNPercent.toFixed(3)+" %";
+      if(metrics.snrDb!=null)meta["SNR (est.)"]=metrics.snrDb.toFixed(1)+" dB";
+    }
+    return {format:"audio",meta:meta,traces:[trace]};
+  }
+
+  function parseAudioFile(arrayBuffer,fileName,options){
     var ACtor=global.AudioContext||global.webkitAudioContext;
     if(!ACtor)return Promise.reject(new Error("Web Audio API is not available in this browser."));
-    var opts=normalizeAudioFftOptions(options);
     var ctx=new ACtor();
     var bufferCopy=arrayBuffer.slice(0);
     return new Promise(function(resolve,reject){
@@ -804,42 +841,10 @@
       }catch(e){fail(e);}
     }).then(function(buffer){
       try{ctx.close();}catch(_){}
-      var sr=buffer.sampleRate;
       var ch=buffer.numberOfChannels||1;
       var channels=[];
       for(var c=0;c<ch;c++)channels.push(buffer.getChannelData(c).slice(0));
-      var samples=selectAudioChannelSamples(channels,opts.channel);
-      var result=computeAudioFftTrace(samples,sr,opts);
-      var prefix=String(fileName||"audio").replace(/^.*[\\/]/,"").replace(/\.[^.]+$/,"")+" ";
-      var label="FFT";
-      if(opts.channel!=="auto")label="FFT_ch"+(parseInt(opts.channel,10)||0);
-      var trace=makeTrace(prefix,fileName,label,fc);
-      trace.data=normalizeTraceData(result.data);
-      trace.units={x:"Hz",y:"dBFS"};
-      var metrics=null;
-      try{metrics=computeAudioMetrics(samples,sr,result);}catch(_){metrics=null;}
-      var meta={
-        "Format":"Audio",
-        "Sample Rate":{value:sr,unit:"Hz"},
-        "Channels":ch,
-        "Channel":opts.channel==="auto"?"mono mix":("ch "+(parseInt(opts.channel,10)||0)),
-        "Sample Count":samples.length,
-        "FFT Size":result.fftSize,
-        "Window":(AUDIO_WINDOWS[opts.window]&&AUDIO_WINDOWS[opts.window].label)||opts.window,
-        "Overlap":Math.round(opts.overlap*100)+"%",
-        "Frames Averaged":result.frames
-      };
-      if(metrics){
-        meta["Peak"]=metrics.peakDbFs.toFixed(2)+" dBFS";
-        meta["RMS"]=metrics.rmsDbFs.toFixed(2)+" dBFS";
-        meta["Crest Factor"]=metrics.crestDb.toFixed(2)+" dB";
-        if(metrics.aRmsDbFs!=null)meta["A-weighted RMS"]=metrics.aRmsDbFs.toFixed(2)+" dBFS(A)";
-        if(metrics.cRmsDbFs!=null)meta["C-weighted RMS"]=metrics.cRmsDbFs.toFixed(2)+" dBFS(C)";
-        if(metrics.fundamentalHz!=null)meta["Fundamental"]=formatHz(metrics.fundamentalHz);
-        if(metrics.thdNPercent!=null)meta["THD+N"]=metrics.thdNPercent.toFixed(3)+" %";
-        if(metrics.snrDb!=null)meta["SNR (est.)"]=metrics.snrDb.toFixed(1)+" dB";
-      }
-      return {format:"audio",meta:meta,traces:[trace]};
+      return parseAudioFromChannels(channels,buffer.sampleRate,fileName,options);
     });
   }
 
@@ -1022,6 +1027,7 @@
     parseMeasurementFile:parseMeasurementFile,
     isAudioFileName:isAudioFileName,
     parseAudioFile:parseAudioFile,
+    parseAudioFromChannels:parseAudioFromChannels,
     AUDIO_WINDOWS:AUDIO_WINDOWS,
     AUDIO_FFT_SIZES:AUDIO_FFT_SIZES,
     AUDIO_DEFAULT_OPTIONS:AUDIO_DEFAULT_OPTIONS,
