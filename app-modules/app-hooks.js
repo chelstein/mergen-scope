@@ -98,6 +98,12 @@
   var parseAudioFile=PH.parseAudioFile;
   var isSpecMaskFileName=PH.isSpecMaskFileName||function(name){return /\.mask\.json$/i.test(String(name||""));};
   var parseSpecMaskJson=PH.parseSpecMaskJson;
+  var isIqFileName=PH.isIqFileName||function(name){return /\.(cfile|cf32|fc32|cs16|sc16|cu8)$/i.test(String(name||""));};
+  var isSigmfMetaFileName=PH.isSigmfMetaFileName||function(name){return /\.sigmf-meta$/i.test(String(name||""));};
+  var isSigmfDataFileName=PH.isSigmfDataFileName||function(name){return /\.sigmf-data$/i.test(String(name||""));};
+  var getSigmfBasename=PH.getSigmfBasename||function(name){return String(name||"").replace(/^.*[\\/]/,"").replace(/\.sigmf-(data|meta)$/i,"");};
+  var parseIqFile=PH.parseIqFile;
+  var parseSigmfPair=PH.parseSigmfPair;
   var IP3_ROLE_KEYS=MH.IP3_ROLE_KEYS;
   var IP3_ROLE_LABELS=MH.IP3_ROLE_LABELS;
   var isIP3Label=MH.isIP3Label;
@@ -601,9 +607,37 @@ function useFileStore(dep){
   var m0=files.length>0?files[0].meta:{};
 
   var loadFiles=useCallback(function(fl,append){
-    var arr=Array.from(fl).filter(function(f){return/\.(dat|csv|txt|s\d+p|mp3|wav)$/i.test(f.name)||isSpecMaskFileName(f.name);});
-    if(!arr.length)return;
-    var pending=arr.length,results=[];
+    var allCandidates=Array.from(fl);
+    var sigmfMetaByBase={},sigmfDataByBase={};
+    allCandidates.forEach(function(f){
+      if(isSigmfMetaFileName(f.name))sigmfMetaByBase[getSigmfBasename(f.name)]=f;
+      else if(isSigmfDataFileName(f.name))sigmfDataByBase[getSigmfBasename(f.name)]=f;
+    });
+    var sigmfPairs=[];
+    Object.keys(sigmfDataByBase).forEach(function(base){
+      var meta=sigmfMetaByBase[base];
+      if(meta){sigmfPairs.push({base:base,meta:meta,data:sigmfDataByBase[base]});}
+    });
+    var pairedNames={};
+    sigmfPairs.forEach(function(p){pairedNames[p.meta.name]=true;pairedNames[p.data.name]=true;});
+    Object.keys(sigmfMetaByBase).forEach(function(base){
+      if(!sigmfDataByBase[base]){
+        var name=sigmfMetaByBase[base].name;
+        if(!pairedNames[name])setError(function(prev){return(prev?prev+" | ":"")+name+": missing matching .sigmf-data file";});
+      }
+    });
+    Object.keys(sigmfDataByBase).forEach(function(base){
+      if(!sigmfMetaByBase[base]){
+        var name=sigmfDataByBase[base].name;
+        if(!pairedNames[name])setError(function(prev){return(prev?prev+" | ":"")+name+": missing matching .sigmf-meta file";});
+      }
+    });
+    var arr=allCandidates.filter(function(f){
+      if(pairedNames[f.name])return false;
+      return /\.(dat|csv|txt|s\d+p|mp3|wav)$/i.test(f.name)||isSpecMaskFileName(f.name)||isIqFileName(f.name);
+    });
+    if(!arr.length&&!sigmfPairs.length)return;
+    var pending=arr.length+sigmfPairs.length,results=[];
     function handleParsed(parsed,file){
       if(parsed.format==="touchstone"){
         var touchstoneFile={id:++_fid,fileName:file.name,meta:parsed.meta||{},traces:[],format:"touchstone",touchstoneNetwork:parsed.touchstoneNetwork||null};
@@ -654,9 +688,13 @@ function useFileStore(dep){
       if(!append||!dep.dtTrace)dep.setDtTrace(fn||null);
       if(!append||!dep.noiseSource)dep.setNoiseSource(fn||null);
     }
+    function mergedIqOptions(){
+      return Object.assign({},dep.audioFftOptions||{},dep.iqOptions||{});
+    }
     arr.forEach(function(file){
       var isAudio=isAudioFileName(file.name);
       var isMask=isSpecMaskFileName(file.name);
+      var isIq=isIqFileName(file.name);
       if(isAudio&&typeof parseAudioFile!=="function"){
         setError(function(p){return(p?p+" | ":"")+file.name+": audio parsing is not available.";});
         pending--;finalize();
@@ -664,6 +702,11 @@ function useFileStore(dep){
       }
       if(isMask&&typeof parseSpecMaskJson!=="function"){
         setError(function(p){return(p?p+" | ":"")+file.name+": mask parsing is not available.";});
+        pending--;finalize();
+        return;
+      }
+      if(isIq&&typeof parseIqFile!=="function"){
+        setError(function(p){return(p?p+" | ":"")+file.name+": IQ parsing is not available.";});
         pending--;finalize();
         return;
       }
@@ -675,6 +718,8 @@ function useFileStore(dep){
             ?parseAudioFile(ev.target.result,file.name,dep.audioFftOptions)
             :isMask
             ?Promise.resolve(parseSpecMaskJson(ev.target.result,file.name))
+            :isIq
+            ?Promise.resolve(parseIqFile(ev.target.result,file.name,mergedIqOptions()))
             :Promise.resolve(parseMeasurementFile(ev.target.result,file.name));
         }catch(e){promise=Promise.reject(e);}
         promise.then(function(parsed){handleParsed(parsed,file);},function(e){
@@ -685,8 +730,39 @@ function useFileStore(dep){
         setError(function(p){return(p?p+" | ":"")+file.name+": failed to read file.";});
         pending--;finalize();
       };
-      if(isAudio)reader.readAsArrayBuffer(file);
+      if(isAudio||isIq)reader.readAsArrayBuffer(file);
       else reader.readAsText(file);
+    });
+    sigmfPairs.forEach(function(pair){
+      if(typeof parseSigmfPair!=="function"){
+        setError(function(p){return(p?p+" | ":"")+pair.data.name+": SigMF parsing is not available.";});
+        pending--;finalize();
+        return;
+      }
+      var metaText=null,dataBuffer=null,errored=false;
+      function maybeRun(){
+        if(metaText==null||dataBuffer==null||errored)return;
+        var pseudoFile={name:pair.data.name};
+        try{
+          var parsed=parseSigmfPair(metaText,dataBuffer,pair.base,mergedIqOptions());
+          handleParsed(parsed,pseudoFile);
+        }catch(e){
+          setError(function(p){return(p?p+" | ":"")+pair.data.name+": "+(e&&e.message||e);});
+        }
+        pending--;finalize();
+      }
+      var metaReader=new FileReader();
+      metaReader.onload=function(ev){metaText=String(ev&&ev.target&&ev.target.result||"");maybeRun();};
+      metaReader.onerror=function(){
+        if(!errored){errored=true;setError(function(p){return(p?p+" | ":"")+pair.meta.name+": failed to read SigMF metadata.";});pending--;finalize();}
+      };
+      var dataReader=new FileReader();
+      dataReader.onload=function(ev){dataBuffer=ev&&ev.target&&ev.target.result;maybeRun();};
+      dataReader.onerror=function(){
+        if(!errored){errored=true;setError(function(p){return(p?p+" | ":"")+pair.data.name+": failed to read SigMF data.";});pending--;finalize();}
+      };
+      metaReader.readAsText(pair.meta);
+      dataReader.readAsArrayBuffer(pair.data);
     });
   },[dep.dtTrace,dep.noiseSource,files,dep]);
 
