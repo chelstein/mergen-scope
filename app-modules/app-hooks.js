@@ -593,6 +593,85 @@ function useXControls(activePaneId, panes){
   return {zoomAll:zoomAll,setZoomAll:setZoomAll,setZoomAllRaw:setZoomAllRaw,zoom:zoom,setZoom:setZoom,sharedZoom:sharedZoom,setSharedZoom:setSharedZoom,paneXZooms:paneXZooms,setPaneXZooms:setPaneXZooms,getPaneZoom:getPaneZoom,clearAllXZooms:clearAllXZooms};
 }
 
+var _parserWorker=null;
+var _parserWorkerDisabled=false;
+var _parserWorkerSeq=0;
+var _parserWorkerPending={};
+function getParserWorker(){
+  if(_parserWorkerDisabled)return null;
+  if(_parserWorker)return _parserWorker;
+  if(typeof Worker==="undefined"){_parserWorkerDisabled=true;return null;}
+  try{
+    var script=document.querySelector('script[src*="app-modules/app-hooks"]');
+    var url="./app-modules/parser-worker.js";
+    if(script&&script.src){
+      var srcUrl=script.src;
+      var qIdx=srcUrl.indexOf("?");
+      var query=qIdx>=0?srcUrl.slice(qIdx):"";
+      var base=srcUrl.slice(0,qIdx>=0?qIdx:srcUrl.length).replace(/[^/]*$/,"");
+      url=base+"parser-worker.js"+query;
+    }
+    _parserWorker=new Worker(url);
+    _parserWorker.onmessage=function(ev){
+      var msg=ev.data||{};
+      var pending=_parserWorkerPending[msg.id];
+      if(!pending)return;
+      delete _parserWorkerPending[msg.id];
+      if(msg.ok)pending.resolve(msg.result);
+      else pending.reject(new Error(msg.error||"Worker error"));
+    };
+    _parserWorker.onerror=function(err){
+      _parserWorkerDisabled=true;
+      Object.keys(_parserWorkerPending).forEach(function(k){
+        try{_parserWorkerPending[k].reject(new Error("Parser worker crashed: "+(err&&err.message||"unknown")));}catch(_){}
+        delete _parserWorkerPending[k];
+      });
+      try{_parserWorker.terminate();}catch(_){}
+      _parserWorker=null;
+    };
+  }catch(e){
+    _parserWorkerDisabled=true;
+    _parserWorker=null;
+  }
+  return _parserWorker;
+}
+function runInParserWorker(kind,payload){
+  var worker=getParserWorker();
+  if(!worker)return Promise.reject(new Error("Parser worker is unavailable."));
+  return new Promise(function(resolve,reject){
+    var id=++_parserWorkerSeq;
+    _parserWorkerPending[id]={resolve:resolve,reject:reject};
+    var msg=Object.assign({id:id,kind:kind},payload||{});
+    try{worker.postMessage(msg);}
+    catch(e){
+      delete _parserWorkerPending[id];
+      reject(e);
+    }
+  });
+}
+
+function decodeAudioToChannels(arrayBuffer){
+  var ACtor=window.AudioContext||window.webkitAudioContext;
+  if(!ACtor)return Promise.reject(new Error("Web Audio API is not available in this browser."));
+  var ctx=new ACtor();
+  var bufferCopy=arrayBuffer.slice(0);
+  return new Promise(function(resolve,reject){
+    var done=false;
+    var ok=function(buf){if(done)return;done=true;resolve(buf);};
+    var fail=function(err){if(done)return;done=true;reject(err instanceof Error?err:new Error("Unable to decode audio file."));};
+    try{
+      var p=ctx.decodeAudioData(bufferCopy,ok,fail);
+      if(p&&typeof p.then==="function")p.then(ok,fail);
+    }catch(e){fail(e);}
+  }).then(function(buffer){
+    try{ctx.close();}catch(_){}
+    var ch=buffer.numberOfChannels||1;
+    var channels=[];
+    for(var c=0;c<ch;c++)channels.push(buffer.getChannelData(c).slice(0));
+    return {channels:channels,sampleRate:buffer.sampleRate};
+  });
+}
+
 function useFileStore(dep){
   var _f=useState([]),files=_f[0],setFiles=_f[1];
   var _e=useState(null),error=_e[0],setError=_e[1];
@@ -714,13 +793,27 @@ function useFileStore(dep){
       reader.onload=function(ev){
         var promise;
         try{
-          promise=isAudio
-            ?parseAudioFile(ev.target.result,file.name,dep.audioFftOptions)
-            :isMask
-            ?Promise.resolve(parseSpecMaskJson(ev.target.result,file.name))
-            :isIq
-            ?Promise.resolve(parseIqFile(ev.target.result,file.name,mergedIqOptions()))
-            :Promise.resolve(parseMeasurementFile(ev.target.result,file.name));
+          if(isAudio){
+            promise=decodeAudioToChannels(ev.target.result).then(function(decoded){
+              return runInParserWorker("audio-channels",{
+                channels:decoded.channels,
+                sampleRate:decoded.sampleRate,
+                fileName:file.name,
+                options:dep.audioFftOptions
+              }).catch(function(){
+                return parseAudioFromChannels(decoded.channels,decoded.sampleRate,file.name,dep.audioFftOptions);
+              });
+            });
+          }else if(isMask){
+            promise=runInParserWorker("mask",{text:ev.target.result,fileName:file.name})
+              .catch(function(){return parseSpecMaskJson(ev.target.result,file.name);});
+          }else if(isIq){
+            promise=runInParserWorker("iq-file",{arrayBuffer:ev.target.result,fileName:file.name,options:mergedIqOptions()})
+              .catch(function(){return parseIqFile(ev.target.result,file.name,mergedIqOptions());});
+          }else{
+            promise=runInParserWorker("measurement",{text:ev.target.result,fileName:file.name})
+              .catch(function(){return parseMeasurementFile(ev.target.result,file.name);});
+          }
         }catch(e){promise=Promise.reject(e);}
         promise.then(function(parsed){handleParsed(parsed,file);},function(e){
           setError(function(p){return(p?p+" | ":"")+file.name+": "+(e&&e.message||e);});
@@ -740,24 +833,28 @@ function useFileStore(dep){
         return;
       }
       var metaText=null,dataBuffer=null,errored=false;
-      function maybeRun(){
+      function maybeRunWorker(){
         if(metaText==null||dataBuffer==null||errored)return;
         var pseudoFile={name:pair.data.name};
-        try{
-          var parsed=parseSigmfPair(metaText,dataBuffer,pair.base,mergedIqOptions());
-          handleParsed(parsed,pseudoFile);
-        }catch(e){
+        var ab=dataBuffer;
+        runInParserWorker("sigmf-pair",{
+          metaText:metaText,
+          dataBuffer:ab,
+          baseName:pair.base,
+          options:mergedIqOptions()
+        },[ab]).catch(function(){
+          return parseSigmfPair(metaText,dataBuffer,pair.base,mergedIqOptions());
+        }).then(function(parsed){handleParsed(parsed,pseudoFile);},function(e){
           setError(function(p){return(p?p+" | ":"")+pair.data.name+": "+(e&&e.message||e);});
-        }
-        pending--;finalize();
+        }).then(function(){pending--;finalize();});
       }
       var metaReader=new FileReader();
-      metaReader.onload=function(ev){metaText=String(ev&&ev.target&&ev.target.result||"");maybeRun();};
+      metaReader.onload=function(ev){metaText=String(ev&&ev.target&&ev.target.result||"");maybeRunWorker();};
       metaReader.onerror=function(){
         if(!errored){errored=true;setError(function(p){return(p?p+" | ":"")+pair.meta.name+": failed to read SigMF metadata.";});pending--;finalize();}
       };
       var dataReader=new FileReader();
-      dataReader.onload=function(ev){dataBuffer=ev&&ev.target&&ev.target.result;maybeRun();};
+      dataReader.onload=function(ev){dataBuffer=ev&&ev.target&&ev.target.result;maybeRunWorker();};
       dataReader.onerror=function(){
         if(!errored){errored=true;setError(function(p){return(p?p+" | ":"")+pair.data.name+": failed to read SigMF data.";});pending--;finalize();}
       };
