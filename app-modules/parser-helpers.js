@@ -687,6 +687,7 @@
         var scale=(b===0||b===halfBins)?1:2;
         var amp=(mag/winSum)*scale;
         var db=20*Math.log10(amp+1e-12);
+        if(db<-160)db=-160;
         if(db<minDb)minDb=db;
         if(db>maxDb)maxDb=db;
         data[rowOffset+b]=db;
@@ -745,7 +746,9 @@
       var avg=sum[b3]/frames;
       var scale=(b3===0||b3===halfBins)?1:2;
       var amp=(avg/winSum)*scale;
-      data.push({freq:b3*sampleRate/N,amp:20*Math.log10(amp+1e-12)});
+      var db=20*Math.log10(amp+1e-12);
+      if(db<-160)db=-160;
+      data.push({freq:b3*sampleRate/N,amp:db});
     }
     return {data:data,fftSize:N,frames:frames,hop:hop};
   }
@@ -789,19 +792,60 @@
       spec.push({freq:Number(data[k].freq),pwr:pwr});
       totalPwr+=pwr;
     }
-    var fund=null,fundIdx=-1;
+    var globalMax=null,globalMaxIdx=-1;
     for(var b=1;b<spec.length;b++){
-      if(!fund||spec[b].pwr>fund.pwr){fund=spec[b];fundIdx=b;}
+      if(!globalMax||spec[b].pwr>globalMax.pwr){globalMax=spec[b];globalMaxIdx=b;}
     }
-    var fundamentalHz=fund?fund.freq:null;
+    var fundamentalHz=globalMax?globalMax.freq:null;
+    var dominantPeaks=[];
+    if(globalMax){
+      var threshPwr=globalMax.pwr*Math.pow(10,-12/10);
+      for(var b2=1;b2<spec.length-1;b2++){
+        var p=spec[b2];
+        if(p.pwr>=threshPwr&&p.pwr>spec[b2-1].pwr&&p.pwr>=spec[b2+1].pwr){
+          dominantPeaks.push({freq:p.freq,pwr:p.pwr,idx:b2});
+        }
+      }
+      dominantPeaks.sort(function(a,b){return b.pwr-a.pwr;});
+      if(dominantPeaks.length>8)dominantPeaks=dominantPeaks.slice(0,8);
+      if(!dominantPeaks.length)dominantPeaks=[{freq:globalMax.freq,pwr:globalMax.pwr,idx:globalMaxIdx}];
+    }
     var thdNPercent=null;
-    if(fund&&totalPwr>0){
-      var notch=Math.max(30,fundamentalHz*0.02);
+    if(dominantPeaks.length&&totalPwr>0){
       var resid=0;
       for(var c=0;c<spec.length;c++){
-        if(Math.abs(spec[c].freq-fundamentalHz)>notch)resid+=spec[c].pwr;
+        var f=spec[c].freq,inNotch=false;
+        for(var pi=0;pi<dominantPeaks.length;pi++){
+          var notch=Math.max(30,dominantPeaks[pi].freq*0.02);
+          if(Math.abs(f-dominantPeaks[pi].freq)<=notch){inNotch=true;break;}
+        }
+        if(!inNotch)resid+=spec[c].pwr;
       }
       thdNPercent=Math.sqrt(resid/totalPwr)*100;
+    }
+    var easAttention=null;
+    if(dominantPeaks.length){
+      function findPeakNear(targetHz,tolHz){
+        var best=null;
+        for(var i=0;i<dominantPeaks.length;i++){
+          if(Math.abs(dominantPeaks[i].freq-targetHz)<=tolHz){
+            if(!best||dominantPeaks[i].pwr>best.pwr)best=dominantPeaks[i];
+          }
+        }
+        return best;
+      }
+      var p853=findPeakNear(853.05,8);
+      var p960=findPeakNear(960.05,8);
+      if(p853&&p960){
+        var db853=10*Math.log10(p853.pwr+1e-30);
+        var db960=10*Math.log10(p960.pwr+1e-30);
+        if(Math.abs(db853-db960)<=8){
+          easAttention={
+            f1:p853.freq,f2:p960.freq,
+            db1:db853,db2:db960
+          };
+        }
+      }
     }
     var snrDb=null;
     if(spec.length>=20){
@@ -833,7 +877,9 @@
       fundamentalHz:fundamentalHz,
       thdNPercent:thdNPercent,
       snrDb:snrDb,
-      fundIdx:fundIdx
+      fundIdx:globalMaxIdx,
+      dominantPeaks:dominantPeaks,
+      easAttention:easAttention
     };
   }
 
@@ -878,8 +924,19 @@
       if(metrics.aRmsDbFs!=null)meta["A-weighted RMS"]=metrics.aRmsDbFs.toFixed(2)+" dBFS(A)";
       if(metrics.cRmsDbFs!=null)meta["C-weighted RMS"]=metrics.cRmsDbFs.toFixed(2)+" dBFS(C)";
       if(metrics.fundamentalHz!=null)meta["Fundamental"]=formatHz(metrics.fundamentalHz);
-      if(metrics.thdNPercent!=null)meta["THD+N"]=metrics.thdNPercent.toFixed(3)+" %";
+      var notchedCount=(metrics.dominantPeaks&&metrics.dominantPeaks.length)||0;
+      if(metrics.thdNPercent!=null){
+        var thdNote=notchedCount>1?" ("+notchedCount+" tones notched)":"";
+        meta["THD+N"]=metrics.thdNPercent.toFixed(3)+" %"+thdNote;
+      }
       if(metrics.snrDb!=null)meta["SNR (est.)"]=metrics.snrDb.toFixed(1)+" dB";
+      if(metrics.dominantPeaks&&metrics.dominantPeaks.length>1){
+        meta["Dominant Tones"]=metrics.dominantPeaks.map(function(p){return formatHz(p.freq);}).join(" · ");
+      }
+      if(metrics.easAttention){
+        var ea=metrics.easAttention;
+        meta["EAS Attention"]=formatHz(ea.f1)+" + "+formatHz(ea.f2)+" · "+ea.db1.toFixed(1)+" / "+ea.db2.toFixed(1)+" dBFS · matched";
+      }
     }
     var spectrogram=null;
     try{spectrogram=computeAudioSpectrogram(samples,sampleRate,opts,300);}catch(_){spectrogram=null;}
@@ -1002,7 +1059,9 @@
       var avg=sum[binIdx]/frames;
       var amp=avg/winSum;
       var binFreq=(k-half)*sampleRate/N;
-      data.push({freq:centerFreqHz+binFreq,amp:20*Math.log10(amp+1e-12)});
+      var dbIq=20*Math.log10(amp+1e-12);
+      if(dbIq<-160)dbIq=-160;
+      data.push({freq:centerFreqHz+binFreq,amp:dbIq});
     }
     return {data:data,fftSize:N,frames:frames,hop:hop};
   }
