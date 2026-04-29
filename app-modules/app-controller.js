@@ -832,6 +832,71 @@ function useAppController(){
     var skippedNote=result.skipped>0?(" (skipped "+result.skipped+"/"+result.total+" non-overlapping freq points)"):"";
     setError("De-embed: created "+newTraces.length+" traces from "+result.samples.length+" frequencies"+skippedNote+".");
   }
+  function onTouchstoneDeembedOpenShort(measFileId,openFileId,shortFileId){
+    if(measFileId==null||openFileId==null)return;
+    if(measFileId===openFileId||measFileId===shortFileId){setError("De-embed: pick distinct files for measurement, open, and short.");return;}
+    var TSH=global.TouchstoneMathHelpers||{};
+    if(typeof TSH.buildDeembeddedOpenShortSamples!=="function"){setError("De-embedding helpers are not available in this build.");return;}
+    var meas=files.find(function(f){return f&&f.id===measFileId;});
+    var open=files.find(function(f){return f&&f.id===openFileId;});
+    var shortF=shortFileId!=null?files.find(function(f){return f&&f.id===shortFileId;}):null;
+    if(!meas||!meas.touchstoneNetwork){setError("De-embed: measurement file is not a Touchstone file.");return;}
+    if(!open||!open.touchstoneNetwork){setError("De-embed: open structure is not a Touchstone file.");return;}
+    if(shortFileId!=null&&(!shortF||!shortF.touchstoneNetwork)){setError("De-embed: short structure is not a Touchstone file.");return;}
+    if(meas.touchstoneNetwork.portCount!==2||open.touchstoneNetwork.portCount!==2||(shortF&&shortF.touchstoneNetwork.portCount!==2)){
+      setError("De-embed: open/short de-embedding requires 2-port files.");
+      return;
+    }
+    var z0=(meas.touchstoneNetwork.referenceOhms&&meas.touchstoneNetwork.referenceOhms[0])||50;
+    var openZ0=(open.touchstoneNetwork.referenceOhms&&open.touchstoneNetwork.referenceOhms[0])||50;
+    if(Math.abs(z0-openZ0)>1e-6){setError("De-embed: open structure has different reference impedance ("+z0+" vs "+openZ0+" ohms).");return;}
+    if(shortF){
+      var shortZ0=(shortF.touchstoneNetwork.referenceOhms&&shortF.touchstoneNetwork.referenceOhms[0])||50;
+      if(Math.abs(z0-shortZ0)>1e-6){setError("De-embed: short structure has different reference impedance ("+z0+" vs "+shortZ0+" ohms).");return;}
+    }
+    var result=TSH.buildDeembeddedOpenShortSamples(meas.touchstoneNetwork.samples,open.touchstoneNetwork.samples,shortF?shortF.touchstoneNetwork.samples:null,meas.touchstoneNetwork.referenceOhms);
+    if(!result||!result.samples||!result.samples.length){setError("De-embed: no overlapping frequency points (or all extractions failed).");return;}
+    var label=shortF?"_osd":"_od";
+    var prefix=String(meas.fileName||"meas").replace(/^.*[\\/]/,"").replace(/\.[^.]+$/,"")+" ";
+    var entries=[
+      {label:"S11"+label,row:0,col:0},
+      {label:"S21"+label,row:1,col:0},
+      {label:"S12"+label,row:0,col:1},
+      {label:"S22"+label,row:1,col:1}
+    ];
+    var existingLabels={};
+    (meas.traces||[]).forEach(function(tr){if(tr&&tr.deembedEntry)existingLabels[tr.deembedEntry]=true;});
+    var newTraces=[];
+    var newVis={};
+    entries.forEach(function(entry){
+      if(existingLabels[entry.label])return;
+      var data=result.samples.map(function(s){
+        var c=s.sMatrix[entry.row][entry.col];
+        var mag=Math.sqrt(c.re*c.re+c.im*c.im);
+        return {freq:s.freq,amp:20*Math.log10(mag+1e-30)};
+      });
+      var trace=makeTrace(prefix,meas.fileName,entry.label,meas.id);
+      trace.data=data;
+      trace.units={x:"Hz",y:"dB"};
+      trace.kind="raw";
+      trace.deembedEntry=entry.label;
+      trace.fileId=meas.id;
+      trace.fileName=meas.fileName;
+      newTraces.push(trace);
+      newVis[trace.name]=true;
+    });
+    if(!newTraces.length){setError("De-embed: traces are already present (clear them first to re-run).");return;}
+    setFiles(function(prev){
+      return (prev||[]).map(function(f){
+        if(!f||f.id!==measFileId)return f;
+        return Object.assign({},f,{traces:(f.traces||[]).concat(newTraces)});
+      });
+    });
+    setVis(function(prev){return Object.assign({},prev||{},newVis);});
+    var modeLabel=shortF?"open+short":"open-only";
+    var skippedNote=result.skipped>0?(" (skipped "+result.skipped+"/"+result.total+")"):"";
+    setError("De-embed ("+modeLabel+"): created "+newTraces.length+" traces from "+result.samples.length+" frequencies"+skippedNote+".");
+  }
   function onTouchstoneGenerateMixedMode(fileId){
     if(fileId==null)return;
     var TSH=global.TouchstoneMathHelpers||{};
@@ -2654,7 +2719,7 @@ function useAppController(){
 
   var topBarProps={files:files,removeFile:removeFile,hasData:hasData,C:C,showSidebar:showSidebar,setShowSidebar:setShowSidebar,showMarkerTools:showMarkerTools,setShowMarkerTools:setShowMarkerTools,showPaneTools:showPaneTools,setShowPaneTools:setShowPaneTools,showSearchTools:showSearchTools,setShowSearchTools:setShowSearchTools,showLineTools:showLineTools,setShowLineTools:setShowLineTools,showViewTools:showViewTools,setShowViewTools:setShowViewTools,showDots:showDots,setShowDots:setShowDots,showDT:showDT,setShowDT:setShowDTFromTopBar,analysisButtons:analysisButtons,clearAllFiles:clearAllFiles,showImportExportPanel:showImportExportPanel,toggleImportExportPanel:toggleImportExportPanel};
   var twoPortTouchstoneFilesList=files.filter(function(f){return f&&f.touchstoneNetwork&&f.touchstoneNetwork.portCount===2;}).map(function(f){return {id:f.id,fileName:f.fileName};});
-  var sidebarProps={C:C,files:files,mKeys:mKeys,stats:stats,allTr:allTr,panes:panes,markers:markers,refLines:refLines,activePaneId:activePaneId,selectedTraceName:selectedTraceName,dragTraceName:dragTraceName,tracePaneMap:tracePaneMap,vis:vis,setVis:setVis,paneMode:paneMode,getTracePaneId:function(traceName){return getTracePaneId(tracePaneMap,traceName);},getPaneRenderMode:getPaneRenderMode,getTraceByName:getTraceByName,getTraceFile:getTraceFile,selectTrace:selectTrace,onTraceDragStart:onTraceDragStart,onTraceDragEnd:onTraceDragEnd,removeTrace:removeTrace,showMarkers:showMarkers,setShowMarkers:setShowMarkers,showMeta:showMeta,setShowMeta:setShowMeta,showTouchstoneControls:showTouchstoneControls,setShowTouchstoneControls:setShowTouchstoneControls,fitPane:fitPane,fitAllPanes:fitAllPanes,resetYZ:resetYZ,clearPane:clearPane,yU:yU,mcMap:mcMap,traceColorMap:traceColorMap,setMarkers:setMarkers,zoom:zoom,selectedMkrIdx:selectedMkrIdx,setSelectedMkrIdx:setSelectedMkrIdx,selectedRefLineId:selectedRefLineId,setSelectedRefLineId:setSelectedRefLineId,setRefLines:setRefLines,setActivePaneId:setActivePaneId,clearMarkers:clearMarkers,rmMkr:rmMkr,removeFile:removeFile,touchstoneStateByFileId:touchstoneStateByFileId,onTouchstoneSetActiveFamily:onTouchstoneSetActiveFamily,onTouchstoneSetFamilyView:onTouchstoneSetFamilyView,onTouchstoneSetExpanded:onTouchstoneSetExpanded,onTouchstoneToggleCell:onTouchstoneToggleCell,onTouchstoneApplyPreset:onTouchstoneApplyPreset,onTouchstoneClearFileViews:onTouchstoneClearFileViews,onTouchstoneGenerateMixedMode:onTouchstoneGenerateMixedMode,onTouchstoneDeembedTwoXThru:onTouchstoneDeembedTwoXThru,twoPortTouchstoneFiles:twoPortTouchstoneFilesList};
+  var sidebarProps={C:C,files:files,mKeys:mKeys,stats:stats,allTr:allTr,panes:panes,markers:markers,refLines:refLines,activePaneId:activePaneId,selectedTraceName:selectedTraceName,dragTraceName:dragTraceName,tracePaneMap:tracePaneMap,vis:vis,setVis:setVis,paneMode:paneMode,getTracePaneId:function(traceName){return getTracePaneId(tracePaneMap,traceName);},getPaneRenderMode:getPaneRenderMode,getTraceByName:getTraceByName,getTraceFile:getTraceFile,selectTrace:selectTrace,onTraceDragStart:onTraceDragStart,onTraceDragEnd:onTraceDragEnd,removeTrace:removeTrace,showMarkers:showMarkers,setShowMarkers:setShowMarkers,showMeta:showMeta,setShowMeta:setShowMeta,showTouchstoneControls:showTouchstoneControls,setShowTouchstoneControls:setShowTouchstoneControls,fitPane:fitPane,fitAllPanes:fitAllPanes,resetYZ:resetYZ,clearPane:clearPane,yU:yU,mcMap:mcMap,traceColorMap:traceColorMap,setMarkers:setMarkers,zoom:zoom,selectedMkrIdx:selectedMkrIdx,setSelectedMkrIdx:setSelectedMkrIdx,selectedRefLineId:selectedRefLineId,setSelectedRefLineId:setSelectedRefLineId,setRefLines:setRefLines,setActivePaneId:setActivePaneId,clearMarkers:clearMarkers,rmMkr:rmMkr,removeFile:removeFile,touchstoneStateByFileId:touchstoneStateByFileId,onTouchstoneSetActiveFamily:onTouchstoneSetActiveFamily,onTouchstoneSetFamilyView:onTouchstoneSetFamilyView,onTouchstoneSetExpanded:onTouchstoneSetExpanded,onTouchstoneToggleCell:onTouchstoneToggleCell,onTouchstoneApplyPreset:onTouchstoneApplyPreset,onTouchstoneClearFileViews:onTouchstoneClearFileViews,onTouchstoneGenerateMixedMode:onTouchstoneGenerateMixedMode,onTouchstoneDeembedTwoXThru:onTouchstoneDeembedTwoXThru,onTouchstoneDeembedOpenShort:onTouchstoneDeembedOpenShort,twoPortTouchstoneFiles:twoPortTouchstoneFilesList};
   var toolbarProps={C:C,allTr:allTr,paneTraces:cTr,vis:vis,zoom:zoom,yZoom:yZoom,cData:cData,fUnit:fUnit,yU:yU,showMarkerTools:showMarkerTools,showPaneTools:showPaneTools,showSearchTools:showSearchTools,showLineTools:showLineTools,showViewTools:showViewTools,mkrMode:mkrMode,refMode:refMode,setNewMarkerArmed:setNewMarkerArmed,newMarkerArmed:newMarkerArmed,setMkrMode:setMkrMode,setRefMode:setRefMode,markerTrace:markerTrace,setMarkerTrace:setMarkerTraceForActivePane,markers:markers,dRef:dRef,setDRef:setDRef,selectedMkrIdx:selectedMkrIdx,setSelectedMkrIdx:setSelectedMkrIdx,selectedRefLineId:selectedRefLineId,setSelectedRefLineId:setSelectedRefLineId,panes:panes,activePaneId:activePaneId,setActivePaneId:setActivePaneId,setPaneMode:setPaneMode,fitAllPanes:fitAllPanes,hasData:hasData,peakSrch:peakSrch,nxtPeak:nxtPeak,minSrch:minSrch,nxtMin:nxtMin,searchDirection:searchDirection,setSearchDirection:setSearchDirection,lockLinesAcrossPanes:lockLinesAcrossPanes,setLockLinesAcrossPanes:setLockLinesAcrossPanes,zoomAll:zoomAll,setZoomAll:setZoomAll,resetYZ:resetYZ,setZoom:setZoom,interactionCtl:interactionCtl,selectedMarker:selectedMarker,refLines:refLines,activePaneRenderMode:activePaneRenderMode,availablePaneRenderModes:availablePaneRenderModes,setActivePaneRenderMode:function(mode){setPaneRenderMode(activePaneId,mode);},toolbarXDivLabel:toolbarXDivLabel,toolbarYDivLabel:toolbarYDivLabel,hasTouchstoneFiles:hasTouchstoneFiles};
   var chartWorkspaceProps={allTr:allTr,paneModels:paneModels,panes:panes,activePaneId:activePaneId,setActivePaneId:setActivePaneId,vis:vis,traceColorMap:traceColorMap,showDots:showDots,markers:markers,selectedMkrIdx:selectedMkrIdx,setSelectedMkrIdx:setSelectedMkrIdx,refLines:refLines,selectedRefLineId:selectedRefLineId,setSelectedRefLineId:setSelectedRefLineId,dragRefLineRef:dragRefLineRef,dragTraceName:dragTraceName,chartDomainRef:chartDomainRef,chartRef:chartRef,chartExportRef:chartExportRef,paneTickModelRef:paneTickModelRef,chartClick:chartClick,chartMMWithDrag:chartMMWithDrag,chartML:chartML,mDown:mDown,mUp:mUp,handleChartMouseDownCapture:handleChartMouseDownCapture,handleChartMouseUpCapture:handleChartMouseUpCapture,hoverData:hoverData,hoverX:hoverX,selA:selA,selB:selB,getXDomainHz:getXDomainHz,mcMap:mcMap,C:C,selectedTraceName:selectedTraceName,selectTrace:selectTrace,moveSelectedTraceToPane:moveSelectedTraceToPane,fitPane:fitPane,clearPane:clearPane,resetYZ:resetYZ,setPaneSmithRange:setPaneSmithRange,clearPaneSmithRange:clearPaneSmithRange,undoPaneSmithRangeZoom:undoPaneSmithRangeZoom,getTraceByName:getTraceByName,getTraceFile:getTraceFile,onSmithMoveSelectedMarker:moveSelectedMarkerToSmithPointData,getTracePaneId:function(traceName){return getTracePaneId(tracePaneMap,traceName);},tracePaneMap:tracePaneMap,onPaneDrop:onPaneDrop,isDrag:isDrag,setIsDrag:setIsDrag,loadFiles:loadFiles,fileInputRef:fRef};
   var analysisStackProps={visible:analysisPanelVisible,showTraceOps:showTraceOps,showAnalysisPanel:showAnalysisPanel,showNoise:showNoise,showIP3:showIP3,visibleAnalysisIds:visibleAnalysisIds,normalizedAnalysisOpenState:normalizedAnalysisOpenState,traceOpsProps:{C:C,openOps:traceOpsOpenSections,setOpenOps:setTraceOpsOpenSections,traceOptions:traceOptions,offsetSource:offsetSource,setOffsetSource:setOffsetSource,offsetValue:offsetValue,setOffsetValue:setOffsetValue,createOffsetDerivedTrace:createOffsetDerivedTrace,scaleSource:scaleSource,setScaleSource:setScaleSource,scaleValue:scaleValue,setScaleValue:setScaleValue,createScaledDerivedTrace:createScaledDerivedTrace,smoothSource:smoothSource,setSmoothSource:setSmoothSource,smoothMethod:smoothMethod,setSmoothMethod:setSmoothMethod,smoothWindow:smoothWindow,setSmoothWindow:setSmoothWindow,smoothPolyOrder:smoothPolyOrder,setSmoothPolyOrder:setSmoothPolyOrder,createSmoothedDerivedTrace:createSmoothedDerivedTrace,subtractA:subtractA,setSubtractA:setSubtractA,subtractB:subtractB,setSubtractB:setSubtractB,traceMathOperation:traceMathOperation,setTraceMathOperation:setTraceMathOperation,subtractInterpolation:subtractInterpolation,setSubtractInterpolation:setSubtractInterpolation,createTraceMathDerivedTrace:createTraceMathDerivedTrace,traceMathUnitWarning:traceMathUnitWarning,traceOpsError:traceOpsError},analysisMenuProps:{C:C,hasTraceOps:showTraceOps,registry:analysisRegistry,toggleAnalysisOpen:toggleAnalysisOpen,target:analysisTarget},noiseCardProps:{C:C,allTr:allTr,noiseSource:noiseSource,setNoiseSource:setNoiseSource,noiseFilter:noiseFilter,setNoiseFilter:setNoiseFilter,npsdStats:npsdStats,addSavedNoise:addSavedNoise,noiseResults:noiseResults,removeNoise:removeNoiseResult},ip3CardProps:{C:C,ip3Ctl:ip3Ctl,ip3Pts:ip3Pts,ip3Res:ip3Res,yU:yU,ip3Gain:ip3Gain,setIP3Gain:setIP3Gain,saveIP3:saveCurrentIP3,ip3Results:ip3Results,removeIP3:removeIP3Result,setMarkers:setMarkers,selectedMarker:selectedMarker,selectedIndex:selectedMkrIdx,assignSelectedRole:assignSelectedRole,clearSelectedRole:clearSelectedRole,autoPickIP3:autoPickIP3},peakSpurProps:{C:C,target:analysisTarget,peakTableLimit:peakTableLimit,setPeakTableLimit:setPeakTableLimit,peakTableMinSpacing:peakTableMinSpacing,setPeakTableMinSpacing:setPeakTableMinSpacing,peakTableMinAmp:peakTableMinAmp,setPeakTableMinAmp:setPeakTableMinAmp,addPeakMarker:addPeakTableMarker,addAllPeakMarkers:addAllPeakTableMarkers},rangeStatsProps:{C:C,target:analysisTarget},bandwidthProps:{C:C,target:analysisTarget,selectedMarker:selectedMarker,bandwidthDrop:bandwidthDrop,setBandwidthDrop:setBandwidthDrop,addMarker:addAnalysisMarker,addMarkers:addAnalysisMarkers},vswrProps:{C:C,target:analysisTarget,onGenerateTrace:onGenerateTouchstoneTrace},returnLossProps:{C:C,target:analysisTarget,onGenerateTrace:onGenerateTouchstoneTrace},groupDelayProps:{C:C,target:analysisTarget,onGenerateTrace:onGenerateTouchstoneTrace},reciprocityIsolationProps:{C:C,target:analysisTarget,getTraceByName:getTraceByName,getTraceFile:getTraceFile},thresholdProps:{C:C,target:analysisTarget,thresholdManual:thresholdManual,setThresholdManual:setThresholdManual,addMarkers:addAnalysisMarkers},rippleProps:{C:C,target:analysisTarget,addMarkers:addAnalysisMarkers},obwProps:{C:C,target:analysisTarget,obwPercent:obwPercent,setObwPercent:setObwPercent},channelPowerProps:{C:C,target:analysisTarget},touchstoneStabilityProps:{C:C,target:analysisTarget,onGenerateTrace:onGenerateTouchstoneTrace}};
