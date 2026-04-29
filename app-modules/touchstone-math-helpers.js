@@ -336,6 +336,93 @@
     return [base,cell,suffix].filter(function(part){return !!String(part).trim();}).join(" ");
   }
 
+  /* Mixed-mode S-parameter conversion for 4-port balanced networks.
+     Default port pairing assumes ports (1,2) form differential pair 1
+     and ports (3,4) form differential pair 2 (Touchstone 1-indexed
+     becomes 0-indexed [0,1] and [2,3] internally). The conversion
+     matrix M is orthogonal (M * M^T = I) so M^-1 = M^T.
+     S_mm = M * S * M^T
+     The output 4x4 has rows/cols ordered as [Dpair1, Dpair2, Cpair1, Cpair2]. */
+  function makeMixedModeConversionMatrix(){
+    var s=1/Math.sqrt(2);
+    return [
+      [s,-s,0,0],
+      [0,0,s,-s],
+      [s,s,0,0],
+      [0,0,s,s]
+    ];
+  }
+  function complexMatrixMultiplyReal(M,S){
+    var n=M.length;
+    var out=[];
+    for(var i=0;i<n;i++){
+      var row=[];
+      for(var j=0;j<n;j++){
+        var re=0,im=0;
+        for(var k=0;k<n;k++){
+          re+=M[i][k]*S[k][j].re;
+          im+=M[i][k]*S[k][j].im;
+        }
+        row.push({re:re,im:im});
+      }
+      out.push(row);
+    }
+    return out;
+  }
+  function complexMatrixMultiplyByRealTranspose(S,M){
+    var n=M.length;
+    var out=[];
+    for(var i=0;i<n;i++){
+      var row=[];
+      for(var j=0;j<n;j++){
+        var re=0,im=0;
+        for(var k=0;k<n;k++){
+          re+=S[i][k].re*M[j][k];
+          im+=S[i][k].im*M[j][k];
+        }
+        row.push({re:re,im:im});
+      }
+      out.push(row);
+    }
+    return out;
+  }
+  function computeMixedModeMatrix(sMatrix4x4){
+    if(!Array.isArray(sMatrix4x4)||sMatrix4x4.length!==4)return null;
+    for(var r=0;r<4;r++){
+      if(!Array.isArray(sMatrix4x4[r])||sMatrix4x4[r].length!==4)return null;
+    }
+    var M=makeMixedModeConversionMatrix();
+    var temp=complexMatrixMultiplyReal(M,sMatrix4x4);
+    return complexMatrixMultiplyByRealTranspose(temp,M);
+  }
+  /* Mixed-mode entry layout (i,j with 0-based index):
+       (0,0) Sdd11   (0,1) Sdd12   (0,2) Sdc11   (0,3) Sdc12
+       (1,0) Sdd21   (1,1) Sdd22   (1,2) Sdc21   (1,3) Sdc22
+       (2,0) Scd11   (2,1) Scd12   (2,2) Scc11   (2,3) Scc12
+       (3,0) Scd21   (3,1) Scd22   (3,2) Scc21   (3,3) Scc22
+     Helper to extract a frequency series for one entry name. */
+  var MIXED_MODE_ENTRY_INDEX={
+    "Sdd11":[0,0],"Sdd12":[0,1],"Sdd21":[1,0],"Sdd22":[1,1],
+    "Sdc11":[0,2],"Sdc12":[0,3],"Sdc21":[1,2],"Sdc22":[1,3],
+    "Scd11":[2,0],"Scd12":[2,1],"Scd21":[3,0],"Scd22":[3,1],
+    "Scc11":[2,2],"Scc12":[2,3],"Scc21":[3,2],"Scc22":[3,3]
+  };
+  function buildMixedModeSeries(samples,entryName){
+    var idx=MIXED_MODE_ENTRY_INDEX[entryName];
+    if(!idx||!Array.isArray(samples))return [];
+    var out=[];
+    for(var i=0;i<samples.length;i++){
+      var s=samples[i];
+      if(!s||!Array.isArray(s.sMatrix))continue;
+      var mm=computeMixedModeMatrix(s.sMatrix);
+      if(!mm)continue;
+      var c=mm[idx[0]][idx[1]];
+      var mag=Math.sqrt(c.re*c.re+c.im*c.im);
+      out.push({freq:s.freq,amp:20*Math.log10(mag+1e-30)});
+    }
+    return out;
+  }
+
   global.TouchstoneMathHelpers={
     cx:cx,
     cloneComplex:cloneComplex,
@@ -365,6 +452,9 @@
     convertSMatrixToYMatrix:convertSMatrixToYMatrix,
     computeTwoPortStability:computeTwoPortStability,
     getTouchstoneFileBaseName:getTouchstoneFileBaseName,
-    buildTouchstoneTraceLabel:buildTouchstoneTraceLabel
+    buildTouchstoneTraceLabel:buildTouchstoneTraceLabel,
+    computeMixedModeMatrix:computeMixedModeMatrix,
+    buildMixedModeSeries:buildMixedModeSeries,
+    MIXED_MODE_ENTRY_INDEX:MIXED_MODE_ENTRY_INDEX
   };
 })(window);

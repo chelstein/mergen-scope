@@ -548,7 +548,8 @@
         h("button",{onClick:function(){applyPreset("default");},title:"Apply the default selection for this file and family.",style:{padding:"4px 8px",border:"1px solid var(--border)",borderRadius:4,background:"transparent",color:"var(--muted)",cursor:"pointer",fontSize:10}},"Default"),
         h("button",{onClick:function(){applyPreset("diagonal");},title:"Select diagonal cells for this family.",style:{padding:"4px 8px",border:"1px solid var(--border)",borderRadius:4,background:"transparent",color:"var(--muted)",cursor:"pointer",fontSize:10}},"Diagonal"),
         h("button",{onClick:function(){applyPreset("all");},title:"Select every Sij/Yij/Zij cell for this family.",style:{padding:"4px 8px",border:"1px solid var(--border)",borderRadius:4,background:"transparent",color:"var(--muted)",cursor:"pointer",fontSize:10}},"All"),
-        h("button",{onClick:function(){applyPreset("clear");},title:"Clear every matrix selection for this file.",style:{padding:"4px 8px",border:"1px solid var(--border)",borderRadius:4,background:"transparent",color:"#f55",cursor:"pointer",fontSize:10}},"Clear File Views")
+        h("button",{onClick:function(){applyPreset("clear");},title:"Clear every matrix selection for this file.",style:{padding:"4px 8px",border:"1px solid var(--border)",borderRadius:4,background:"transparent",color:"#f55",cursor:"pointer",fontSize:10}},"Clear File Views"),
+        (portCount===4&&p.onGenerateMixedMode)?h("button",{onClick:function(){p.onGenerateMixedMode(fileId);},title:"Generate Sdd/Sdc/Scd/Scc traces from this 4-port single-ended Touchstone (assumes ports 1+2 = differential pair 1, ports 3+4 = differential pair 2).",style:{padding:"4px 8px",border:"1px solid "+((p.C&&p.C.accent)||"var(--accent)"),borderRadius:4,background:"transparent",color:(p.C&&p.C.accent)||"var(--accent)",cursor:"pointer",fontSize:10,fontWeight:600}},"Mixed-Mode"):null
       ),
       h("div",{style:{overflowX:"auto",paddingRight:2}},rows)
       ):null
@@ -1013,7 +1014,8 @@
           onSetExpanded:p.onTouchstoneSetExpanded,
           onToggleCell:p.onTouchstoneToggleCell,
           onApplyPreset:p.onTouchstoneApplyPreset,
-          onClearFileViews:p.onTouchstoneClearFileViews
+          onClearFileViews:p.onTouchstoneClearFileViews,
+          onGenerateMixedMode:p.onTouchstoneGenerateMixedMode
         }));
       }
       if(idx<files.length-1)items.push(h("div",{key:"sep-"+f.id,style:{height:8}}));
