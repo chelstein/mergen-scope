@@ -340,6 +340,8 @@
     var _selectionByFamily=useState({});
     var draftSelectionByFamily=_selectionByFamily[0],setDraftSelectionByFamily=_selectionByFamily[1];
     var selectionByFamily=controlledSelectionByFamily||draftSelectionByFamily||{};
+    var _deembedFixture=useState("");
+    var deembedFixtureId=_deembedFixture[0],setDeembedFixtureId=_deembedFixture[1];
     var _pressCell=useState(null);
     var pressCell=_pressCell[0],setPressCell=_pressCell[1];
     var pressTimerRef=useRef(null);
@@ -551,6 +553,22 @@
         h("button",{onClick:function(){applyPreset("clear");},title:"Clear every matrix selection for this file.",style:{padding:"4px 8px",border:"1px solid var(--border)",borderRadius:4,background:"transparent",color:"#f55",cursor:"pointer",fontSize:10}},"Clear File Views"),
         (portCount===4&&p.onGenerateMixedMode)?h("button",{onClick:function(){p.onGenerateMixedMode(fileId);},title:"Generate Sdd/Sdc/Scd/Scc traces from this 4-port single-ended Touchstone (assumes ports 1+2 = differential pair 1, ports 3+4 = differential pair 2).",style:{padding:"4px 8px",border:"1px solid "+((p.C&&p.C.accent)||"var(--accent)"),borderRadius:4,background:"transparent",color:(p.C&&p.C.accent)||"var(--accent)",cursor:"pointer",fontSize:10,fontWeight:600}},"Mixed-Mode"):null
       ),
+      (portCount===2&&p.onDeembedTwoXThru&&Array.isArray(p.twoPortTouchstoneFiles)&&p.twoPortTouchstoneFiles.length>1)?h("div",{style:{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:6,padding:"4px 6px",border:"1px dashed var(--border)",borderRadius:4}},
+        h("span",{style:{fontSize:10,color:"var(--muted)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.08em"}},"De-embed (2x-thru)"),
+        h("select",{value:String(deembedFixtureId||""),onChange:function(ev){setDeembedFixtureId(ev.target.value?parseInt(ev.target.value,10):"");},style:{fontSize:11,padding:"2px 4px",background:"var(--bg)",color:"var(--text)",border:"1px solid var(--border)",borderRadius:4,maxWidth:160}},
+          [h("option",{key:"none",value:""},"-- pick fixture --")].concat(
+            (p.twoPortTouchstoneFiles||[]).filter(function(o){return o&&o.id!==fileId;}).map(function(o){
+              return h("option",{key:o.id,value:String(o.id)},o.fileName||("File "+o.id));
+            })
+          )
+        ),
+        h("button",{
+          disabled:!deembedFixtureId,
+          onClick:function(){if(!deembedFixtureId)return;p.onDeembedTwoXThru(fileId,deembedFixtureId);},
+          title:"Apply 2x-thru de-embedding: square-root the fixture's ABCD matrix and cascade-deembed both sides from this measurement. Adds S11_de/S21_de/S12_de/S22_de traces.",
+          style:{padding:"3px 8px",border:"1px solid "+((p.C&&p.C.accent)||"var(--accent)"),borderRadius:4,background:deembedFixtureId?((p.C&&p.C.accent)||"var(--accent)")+"14":"transparent",color:deembedFixtureId?((p.C&&p.C.accent)||"var(--accent)"):"var(--muted)",cursor:deembedFixtureId?"pointer":"not-allowed",fontSize:10,fontWeight:600,opacity:deembedFixtureId?1:0.5}
+        },"Apply")
+      ):null,
       h("div",{style:{overflowX:"auto",paddingRight:2}},rows)
       ):null
     );
@@ -1015,7 +1033,9 @@
           onToggleCell:p.onTouchstoneToggleCell,
           onApplyPreset:p.onTouchstoneApplyPreset,
           onClearFileViews:p.onTouchstoneClearFileViews,
-          onGenerateMixedMode:p.onTouchstoneGenerateMixedMode
+          onGenerateMixedMode:p.onTouchstoneGenerateMixedMode,
+          onDeembedTwoXThru:p.onTouchstoneDeembedTwoXThru,
+          twoPortTouchstoneFiles:p.twoPortTouchstoneFiles
         }));
       }
       if(idx<files.length-1)items.push(h("div",{key:"sep-"+f.id,style:{height:8}}));

@@ -423,6 +423,111 @@
     return out;
   }
 
+  /* ------------ 2-port S <-> ABCD conversion + 2x-thru de-embedding ------------
+     ABCD layout: [[A,B],[C,D]] with complex entries. Z0 is the (real, equal)
+     reference impedance at both ports. Standard formulas (Pozar Microwave
+     Engineering, common 2-port). */
+  function sToAbcd2Port(sMatrix,z0){
+    if(!Array.isArray(sMatrix)||sMatrix.length!==2||sMatrix[0].length!==2)return null;
+    var Z=isFinite(Number(z0))?Number(z0):50;
+    var s11=sMatrix[0][0],s12=sMatrix[0][1],s21=sMatrix[1][0],s22=sMatrix[1][1];
+    var two=cx(2,0);
+    var one=cx(1,0);
+    var twoS21=mul(two,s21);
+    if(abs(twoS21)<1e-30)return null;
+    var s12s21=mul(s12,s21);
+    var oneM=function(s){return sub(one,s);};
+    var oneP=function(s){return add(one,s);};
+    var A=div(add(mul(oneP(s11),oneM(s22)),s12s21),twoS21);
+    var B=div(mul(cx(Z,0),add(mul(oneP(s11),oneP(s22)),mul(cx(-1,0),s12s21))),twoS21);
+    var C=div(mul(cx(1/Z,0),add(mul(oneM(s11),oneM(s22)),mul(cx(-1,0),s12s21))),twoS21);
+    var D=div(add(mul(oneM(s11),oneP(s22)),s12s21),twoS21);
+    if(!A||!B||!C||!D)return null;
+    return [[A,B],[C,D]];
+  }
+  function abcdToS2Port(abcd,z0){
+    if(!Array.isArray(abcd)||abcd.length!==2||abcd[0].length!==2)return null;
+    var Z=isFinite(Number(z0))?Number(z0):50;
+    var A=abcd[0][0],B=abcd[0][1],C=abcd[1][0],D=abcd[1][1];
+    var BoZ=div(B,cx(Z,0));
+    var Cz=mul(C,cx(Z,0));
+    var denom=add(add(A,BoZ),add(Cz,D));
+    if(abs(denom)<1e-30)return null;
+    var s11=div(sub(add(A,BoZ),add(Cz,D)),denom);
+    var s12=div(mul(cx(2,0),sub(mul(A,D),mul(B,C))),denom);
+    var s21=div(cx(2,0),denom);
+    var s22=div(sub(add(BoZ,D),add(A,Cz)),denom);
+    return [[s11,s12],[s21,s22]];
+  }
+  function complexSqrt(z){
+    var r=Math.sqrt(z.re*z.re+z.im*z.im);
+    if(r===0)return cx(0,0);
+    var ang=Math.atan2(z.im,z.re)/2;
+    var rsr=Math.sqrt(r);
+    return cx(rsr*Math.cos(ang),rsr*Math.sin(ang));
+  }
+  function matrixSquareRoot2x2(M){
+    if(!Array.isArray(M)||M.length!==2)return null;
+    var det=sub(mul(M[0][0],M[1][1]),mul(M[0][1],M[1][0]));
+    var tr=add(M[0][0],M[1][1]);
+    var sqrtDet=complexSqrt(det);
+    var tauSq=add(tr,mul(cx(2,0),sqrtDet));
+    var tau=complexSqrt(tauSq);
+    if(abs(tau)<1e-15)return null;
+    var Msd=[
+      [add(M[0][0],sqrtDet),M[0][1]],
+      [M[1][0],add(M[1][1],sqrtDet)]
+    ];
+    return [
+      [div(Msd[0][0],tau),div(Msd[0][1],tau)],
+      [div(Msd[1][0],tau),div(Msd[1][1],tau)]
+    ];
+  }
+  function deembed2xThruAtSample(measSMatrix,thruSMatrix,z0){
+    var abcdMeas=sToAbcd2Port(measSMatrix,z0);
+    var abcdThru=sToAbcd2Port(thruSMatrix,z0);
+    if(!abcdMeas||!abcdThru)return null;
+    var abcdHalf=matrixSquareRoot2x2(abcdThru);
+    if(!abcdHalf)return null;
+    var inv=matrixInverse(abcdHalf);
+    if(!inv)return null;
+    var step1=matrixMultiply(inv,abcdMeas);
+    if(!step1)return null;
+    var abcdDut=matrixMultiply(step1,inv);
+    if(!abcdDut)return null;
+    return abcdToS2Port(abcdDut,z0);
+  }
+  function buildDeembedded2xThruSamples(measSamples,thruSamples,z0,opts){
+    if(!Array.isArray(measSamples)||!Array.isArray(thruSamples))return null;
+    opts=opts||{};
+    var freqTolerance=Number(opts.freqTolerance)||1e-3;
+    var thruByFreq={};
+    thruSamples.forEach(function(s){if(s&&isFinite(s.freq))thruByFreq[Math.round(s.freq*1e6)/1e6]=s;});
+    var out=[];
+    var skipped=0;
+    for(var i=0;i<measSamples.length;i++){
+      var ms=measSamples[i];
+      if(!ms||!isFinite(ms.freq)||!Array.isArray(ms.sMatrix))continue;
+      var key=Math.round(ms.freq*1e6)/1e6;
+      var thru=thruByFreq[key];
+      if(!thru){
+        var bestDelta=Infinity,bestMatch=null;
+        for(var j=0;j<thruSamples.length;j++){
+          var ts=thruSamples[j];
+          if(!ts||!isFinite(ts.freq))continue;
+          var delta=Math.abs(ts.freq-ms.freq)/Math.max(ms.freq,1);
+          if(delta<bestDelta){bestDelta=delta;bestMatch=ts;}
+        }
+        if(bestMatch&&bestDelta<=freqTolerance)thru=bestMatch;
+      }
+      if(!thru||!Array.isArray(thru.sMatrix)){skipped++;continue;}
+      var deembed=deembed2xThruAtSample(ms.sMatrix,thru.sMatrix,z0);
+      if(!deembed){skipped++;continue;}
+      out.push({freq:ms.freq,sMatrix:deembed});
+    }
+    return {samples:out,skipped:skipped,total:measSamples.length};
+  }
+
   global.TouchstoneMathHelpers={
     cx:cx,
     cloneComplex:cloneComplex,
@@ -455,6 +560,11 @@
     buildTouchstoneTraceLabel:buildTouchstoneTraceLabel,
     computeMixedModeMatrix:computeMixedModeMatrix,
     buildMixedModeSeries:buildMixedModeSeries,
-    MIXED_MODE_ENTRY_INDEX:MIXED_MODE_ENTRY_INDEX
+    MIXED_MODE_ENTRY_INDEX:MIXED_MODE_ENTRY_INDEX,
+    sToAbcd2Port:sToAbcd2Port,
+    abcdToS2Port:abcdToS2Port,
+    matrixSquareRoot2x2:matrixSquareRoot2x2,
+    deembed2xThruAtSample:deembed2xThruAtSample,
+    buildDeembedded2xThruSamples:buildDeembedded2xThruSamples
   };
 })(window);
