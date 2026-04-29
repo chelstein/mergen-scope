@@ -1007,6 +1007,149 @@
     };
   }
 
+  function computeFmBroadcastMetrics(samples,sampleRate,fftSeries,baseMetrics){
+    if(!samples||!samples.length)return null;
+    var spec=[];
+    var data=fftSeries&&fftSeries.data?fftSeries.data:[];
+    for(var k=0;k<data.length;k++){
+      spec.push({freq:Number(data[k].freq),db:Number(data[k].amp)});
+    }
+    function levelAtBand(centerHz,halfWindowHz){
+      var maxDb=-Infinity;
+      for(var i=0;i<spec.length;i++){
+        if(Math.abs(spec[i].freq-centerHz)<=halfWindowHz&&spec[i].db>maxDb)maxDb=spec[i].db;
+      }
+      return isFinite(maxDb)?maxDb:null;
+    }
+    function bandEnergyDb(loHz,hiHz){
+      var pwr=0,count=0;
+      for(var i=0;i<spec.length;i++){
+        if(spec[i].freq>=loHz&&spec[i].freq<=hiHz){
+          var lin=Math.pow(10,spec[i].db/20);
+          pwr+=lin*lin;
+          count++;
+        }
+      }
+      if(!count||pwr<=0)return null;
+      return 10*Math.log10(pwr/count);
+    }
+    var nyquist=sampleRate/2;
+    var compositeMode=nyquist>=60000;
+    var n=samples.length;
+    var peak=0,negPeak=0;
+    for(var i=0;i<n;i++){
+      var x=samples[i];
+      if(x>peak)peak=x;
+      if(-x>negPeak)negPeak=-x;
+    }
+    var peakOverall=Math.max(peak,negPeak)||1e-12;
+    var asymmetryDb=20*Math.log10((peak+1e-12)/(negPeak+1e-12));
+    var emphSlopeDb=null;
+    var lf=bandEnergyDb(400,800);
+    var hf=bandEnergyDb(8000,12000);
+    if(lf!=null&&hf!=null){
+      emphSlopeDb=hf-lf;
+    }
+    var preEmphPresent=emphSlopeDb!=null&&emphSlopeDb>=8;
+    var audioBwHz=null;
+    var ref1k=null;
+    var sumNear1k=0,countNear1k=0;
+    for(var s=0;s<spec.length;s++){
+      if(spec[s].freq>=800&&spec[s].freq<=1200){sumNear1k+=spec[s].db;countNear1k++;}
+    }
+    if(countNear1k)ref1k=sumNear1k/countNear1k;
+    var floor=ref1k!=null?ref1k-10:-50;
+    for(var bw=spec.length-1;bw>=0;bw--){
+      var f=spec[bw].freq;
+      if(f>nyquist)continue;
+      if(compositeMode&&f>15500)continue;
+      if(spec[bw].db>=floor){audioBwHz=f;break;}
+    }
+    var composite=null;
+    if(compositeMode){
+      var pilotDb=levelAtBand(19000,80);
+      var lminusrEnergyDb=bandEnergyDb(23000,53000);
+      var subDb=levelAtBand(38000,150);
+      var rdsDb=levelAtBand(57000,200);
+      var sca67Db=nyquist>67500?levelAtBand(67000,300):null;
+      var sca92Db=nyquist>92500?levelAtBand(92000,400):null;
+      var lplusrEnergyDb=bandEnergyDb(50,15000);
+      var pilotRel=null,rdsRel=null,subRel=null;
+      if(pilotDb!=null&&lplusrEnergyDb!=null)pilotRel=pilotDb-lplusrEnergyDb;
+      if(rdsDb!=null&&lplusrEnergyDb!=null)rdsRel=rdsDb-lplusrEnergyDb;
+      if(subDb!=null&&lplusrEnergyDb!=null)subRel=subDb-lplusrEnergyDb;
+      var pilotPresent=pilotDb!=null&&ref1k!=null&&pilotDb>ref1k-50;
+      var rdsPresent=rdsDb!=null&&ref1k!=null&&rdsDb>ref1k-55;
+      var sca67Present=sca67Db!=null&&ref1k!=null&&sca67Db>ref1k-55;
+      var sca92Present=sca92Db!=null&&ref1k!=null&&sca92Db>ref1k-55;
+      var stereoIndicated=pilotPresent&&subDb!=null&&ref1k!=null&&subDb>ref1k-50;
+      composite={
+        pilotDb:pilotDb,
+        pilotRelDb:pilotRel,
+        pilotPresent:pilotPresent,
+        subDb:subDb,
+        subRelDb:subRel,
+        stereoIndicated:stereoIndicated,
+        lminusrEnergyDb:lminusrEnergyDb,
+        rdsDb:rdsDb,
+        rdsRelDb:rdsRel,
+        rdsPresent:rdsPresent,
+        sca67Db:sca67Db,
+        sca67Present:sca67Present,
+        sca92Db:sca92Db,
+        sca92Present:sca92Present
+      };
+    }
+    function clamp(x,lo,hi){return Math.max(lo,Math.min(hi,x));}
+    var symScore=clamp(20-Math.abs(asymmetryDb)*3,0,20);
+    var bwScore;
+    if(audioBwHz==null)bwScore=12;
+    else if(audioBwHz<8000)bwScore=clamp(20*audioBwHz/8000,0,20);
+    else if(audioBwHz<=15500)bwScore=20;
+    else bwScore=clamp(20-(audioBwHz-15500)/200,0,20);
+    var emphScore;
+    if(emphSlopeDb==null)emphScore=10;
+    else if(preEmphPresent)emphScore=20;
+    else emphScore=clamp(emphSlopeDb*1.5+10,0,20);
+    var crestDb=baseMetrics&&baseMetrics.crestDb!=null?baseMetrics.crestDb:null;
+    var crestScore;
+    if(crestDb==null)crestScore=10;
+    else if(crestDb<6)crestScore=clamp(crestDb*2.5,0,15);
+    else if(crestDb<=18)crestScore=15;
+    else crestScore=clamp(15-(crestDb-18)*1.5,0,15);
+    var compositeScore=null;
+    if(composite){
+      var pilotScore=composite.pilotPresent?12:0;
+      var stereoScore=composite.stereoIndicated?8:0;
+      var rdsScore=composite.rdsPresent?5:0;
+      compositeScore=pilotScore+stereoScore+rdsScore;
+    }
+    var fmScore;
+    if(compositeMode){
+      fmScore=Math.round(symScore+bwScore+emphScore*0.5+crestScore*0.5+compositeScore+15);
+    }else{
+      fmScore=Math.round(symScore+bwScore+emphScore+crestScore+25);
+    }
+    fmScore=clamp(fmScore,0,100);
+    return {
+      mode:compositeMode?"composite":"audio",
+      sampleRate:sampleRate,
+      audioBwHz:audioBwHz,
+      asymmetryDb:asymmetryDb,
+      preEmphSlopeDb:emphSlopeDb,
+      preEmphPresent:preEmphPresent,
+      composite:composite,
+      fmScore:fmScore,
+      subScores:{
+        symmetry:Math.round(symScore),
+        bandwidth:Math.round(bwScore),
+        preEmph:Math.round(compositeMode?emphScore*0.5:emphScore),
+        crest:Math.round(compositeMode?crestScore*0.5:crestScore),
+        composite:compositeScore!=null?Math.round(compositeScore):null
+      }
+    };
+  }
+
   function formatHz(hz){
     if(hz==null||!isFinite(hz))return null;
     if(hz>=1e6)return (hz/1e6).toFixed(3)+" MHz";
@@ -1078,6 +1221,38 @@
       }
       var s=amMetrics.subScores||{};
       meta["AM Broadcast Score"]=amMetrics.amScore+" / 100 · sym "+s.symmetry+" · NRSC "+s.nrsc+" · hum "+s.hum+" · BW "+s.bandwidth+" · crest "+s.crest+" · loud "+s.loudness;
+    }
+    var fmMetrics=null;
+    try{fmMetrics=computeFmBroadcastMetrics(samples,sampleRate,result,metrics);}catch(_){fmMetrics=null;}
+    if(fmMetrics){
+      meta["FM Mode"]=fmMetrics.mode==="composite"?"Composite (MPX) · "+(sampleRate/1000).toFixed(0)+" kS/s":"Program audio · "+(sampleRate/1000).toFixed(0)+" kS/s";
+      if(fmMetrics.audioBwHz!=null)meta["FM Audio BW"]=formatHz(fmMetrics.audioBwHz);
+      meta["FM Symmetry"]=(fmMetrics.asymmetryDb>=0?"+":"")+fmMetrics.asymmetryDb.toFixed(2)+" dB";
+      if(fmMetrics.preEmphSlopeDb!=null){
+        meta["FM Pre-emphasis"]=(fmMetrics.preEmphPresent?"Detected · ":"Flat · ")+(fmMetrics.preEmphSlopeDb>=0?"+":"")+fmMetrics.preEmphSlopeDb.toFixed(1)+" dB (8-12 kHz vs 400-800 Hz)";
+      }
+      if(fmMetrics.composite){
+        var c=fmMetrics.composite;
+        if(c.pilotDb!=null){
+          meta["FM 19 kHz Pilot"]=(c.pilotPresent?"Present · ":"Absent · ")+c.pilotDb.toFixed(1)+" dBFS"+(c.pilotRelDb!=null?(" · "+(c.pilotRelDb>=0?"+":"")+c.pilotRelDb.toFixed(1)+" dB rel L+R"):"");
+        }
+        if(c.subDb!=null){
+          meta["FM 38 kHz L-R"]=(c.stereoIndicated?"Stereo · ":"Mono / inactive · ")+c.subDb.toFixed(1)+" dBFS";
+        }
+        if(c.rdsDb!=null){
+          meta["FM 57 kHz RDS"]=(c.rdsPresent?"Present · ":"Absent · ")+c.rdsDb.toFixed(1)+" dBFS";
+        }
+        if(c.sca67Db!=null){
+          meta["FM 67 kHz SCA"]=(c.sca67Present?"Present · ":"Absent · ")+c.sca67Db.toFixed(1)+" dBFS";
+        }
+        if(c.sca92Db!=null){
+          meta["FM 92 kHz SCA"]=(c.sca92Present?"Present · ":"Absent · ")+c.sca92Db.toFixed(1)+" dBFS";
+        }
+      }
+      var fs=fmMetrics.subScores||{};
+      var subParts="sym "+fs.symmetry+" · BW "+fs.bandwidth+" · pre-emph "+fs.preEmph+" · crest "+fs.crest;
+      if(fs.composite!=null)subParts+=" · MPX "+fs.composite;
+      meta["FM Broadcast Score"]=fmMetrics.fmScore+" / 100 · "+subParts;
     }
     var spectrogram=null;
     try{spectrogram=computeAudioSpectrogram(samples,sampleRate,opts,300);}catch(_){spectrogram=null;}

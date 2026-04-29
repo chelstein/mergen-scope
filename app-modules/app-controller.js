@@ -2643,7 +2643,7 @@ function useAppController(){
   },[getXDomainHz]);
 
 
-  var mKeys=["Type","Mode","Date","Center Freq","Span","Start","Stop","Ref Level","Rf Att","RBW","VBW","SWT","Preamplifier","Detector","Trace Mode","Sweep Count","Format","Sample Rate","Channels","Channel","Sample Count","FFT Size","Window","Overlap","Frames Averaged","Peak","RMS","Crest Factor","A-weighted RMS","C-weighted RMS","Fundamental","Dominant Tones","EAS Attention","THD+N","SNR (est.)","AM Modulation","AM Audio BW","AM NRSC-1 Mask","AM Hum (worst)","AM Broadcast Score","Sample Format","Center Frequency","Hardware","Author","Description","Capture Time","SigMF Version"];
+  var mKeys=["Type","Mode","Date","Center Freq","Span","Start","Stop","Ref Level","Rf Att","RBW","VBW","SWT","Preamplifier","Detector","Trace Mode","Sweep Count","Format","Sample Rate","Channels","Channel","Sample Count","FFT Size","Window","Overlap","Frames Averaged","Peak","RMS","Crest Factor","A-weighted RMS","C-weighted RMS","Fundamental","Dominant Tones","EAS Attention","THD+N","SNR (est.)","AM Modulation","AM Audio BW","AM NRSC-1 Mask","AM Hum (worst)","AM Broadcast Score","FM Mode","FM Audio BW","FM Symmetry","FM Pre-emphasis","FM 19 kHz Pilot","FM 38 kHz L-R","FM 57 kHz RDS","FM 67 kHz SCA","FM 92 kHz SCA","FM Broadcast Score","Sample Format","Center Frequency","Hardware","Author","Description","Capture Time","SigMF Version"];
   var hasData=files.length>0;
   useEffect(function(){
     if(!sharedHashLoadedRef.current)return;
