@@ -342,6 +342,10 @@
     var selectionByFamily=controlledSelectionByFamily||draftSelectionByFamily||{};
     var _deembedFixture=useState("");
     var deembedFixtureId=_deembedFixture[0],setDeembedFixtureId=_deembedFixture[1];
+    var _deembedOpen=useState("");
+    var deembedOpenId=_deembedOpen[0],setDeembedOpenId=_deembedOpen[1];
+    var _deembedShort=useState("");
+    var deembedShortId=_deembedShort[0],setDeembedShortId=_deembedShort[1];
     var _pressCell=useState(null);
     var pressCell=_pressCell[0],setPressCell=_pressCell[1];
     var pressTimerRef=useRef(null);
@@ -567,6 +571,29 @@
           onClick:function(){if(!deembedFixtureId)return;p.onDeembedTwoXThru(fileId,deembedFixtureId);},
           title:"Apply 2x-thru de-embedding: square-root the fixture's ABCD matrix and cascade-deembed both sides from this measurement. Adds S11_de/S21_de/S12_de/S22_de traces.",
           style:{padding:"3px 8px",border:"1px solid "+((p.C&&p.C.accent)||"var(--accent)"),borderRadius:4,background:deembedFixtureId?((p.C&&p.C.accent)||"var(--accent)")+"14":"transparent",color:deembedFixtureId?((p.C&&p.C.accent)||"var(--accent)"):"var(--muted)",cursor:deembedFixtureId?"pointer":"not-allowed",fontSize:10,fontWeight:600,opacity:deembedFixtureId?1:0.5}
+        },"Apply")
+      ):null,
+      (portCount===2&&p.onDeembedOpenShort&&Array.isArray(p.twoPortTouchstoneFiles)&&p.twoPortTouchstoneFiles.length>1)?h("div",{style:{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:6,padding:"4px 6px",border:"1px dashed var(--border)",borderRadius:4}},
+        h("span",{style:{fontSize:10,color:"var(--muted)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.08em"}},"De-embed (open/short)"),
+        h("select",{value:String(deembedOpenId||""),onChange:function(ev){setDeembedOpenId(ev.target.value?parseInt(ev.target.value,10):"");},title:"Select the OPEN cal structure file (required).",style:{fontSize:11,padding:"2px 4px",background:"var(--bg)",color:"var(--text)",border:"1px solid var(--border)",borderRadius:4,maxWidth:140}},
+          [h("option",{key:"none",value:""},"-- open --")].concat(
+            (p.twoPortTouchstoneFiles||[]).filter(function(o){return o&&o.id!==fileId;}).map(function(o){
+              return h("option",{key:o.id,value:String(o.id)},o.fileName||("File "+o.id));
+            })
+          )
+        ),
+        h("select",{value:String(deembedShortId||""),onChange:function(ev){setDeembedShortId(ev.target.value?parseInt(ev.target.value,10):"");},title:"Select the SHORT cal structure file (optional - leave blank for two-step open-only de-embedding).",style:{fontSize:11,padding:"2px 4px",background:"var(--bg)",color:"var(--text)",border:"1px solid var(--border)",borderRadius:4,maxWidth:140}},
+          [h("option",{key:"none",value:""},"-- short (opt) --")].concat(
+            (p.twoPortTouchstoneFiles||[]).filter(function(o){return o&&o.id!==fileId&&o.id!==deembedOpenId;}).map(function(o){
+              return h("option",{key:o.id,value:String(o.id)},o.fileName||("File "+o.id));
+            })
+          )
+        ),
+        h("button",{
+          disabled:!deembedOpenId,
+          onClick:function(){if(!deembedOpenId)return;p.onDeembedOpenShort(fileId,deembedOpenId,deembedShortId||null);},
+          title:"Apply Y-parameter open/short de-embedding (Koolen et al). With both Open and Short selected, runs the standard 3-step formula. With only Open, runs 2-step open-only. Adds S11_osd/S21_osd/etc traces.",
+          style:{padding:"3px 8px",border:"1px solid "+((p.C&&p.C.accent)||"var(--accent)"),borderRadius:4,background:deembedOpenId?((p.C&&p.C.accent)||"var(--accent)")+"14":"transparent",color:deembedOpenId?((p.C&&p.C.accent)||"var(--accent)"):"var(--muted)",cursor:deembedOpenId?"pointer":"not-allowed",fontSize:10,fontWeight:600,opacity:deembedOpenId?1:0.5}
         },"Apply")
       ):null,
       h("div",{style:{overflowX:"auto",paddingRight:2}},rows)
@@ -1035,6 +1062,7 @@
           onClearFileViews:p.onTouchstoneClearFileViews,
           onGenerateMixedMode:p.onTouchstoneGenerateMixedMode,
           onDeembedTwoXThru:p.onTouchstoneDeembedTwoXThru,
+          onDeembedOpenShort:p.onTouchstoneDeembedOpenShort,
           twoPortTouchstoneFiles:p.twoPortTouchstoneFiles
         }));
       }

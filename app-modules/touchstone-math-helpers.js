@@ -292,6 +292,23 @@
     return matrixMultiply(matrixMultiply(invLeft,matrixMultiply(minus,plusInv)),invLeft);
   }
 
+  function convertYMatrixToSMatrix(yMatrix,referenceOhms){
+    var n=(yMatrix&&yMatrix.length)||0;
+    if(!n)return null;
+    var refs=normalizeReferenceArray(referenceOhms,n);
+    if(!refs)return null;
+    var sqrtZ=matrixScaleDiagonal(refs,function(value){return cx(Math.sqrt(value),0);});
+    if(!sqrtZ)return null;
+    var G=matrixMultiply(matrixMultiply(sqrtZ,yMatrix),sqrtZ);
+    if(!G)return null;
+    var I=matrixIdentity(n);
+    var IPlusG=matrixAdd(I,G);
+    var IMinusG=matrixSubtract(I,G);
+    var inv=matrixInverse(IPlusG);
+    if(!inv)return null;
+    return matrixMultiply(inv,IMinusG);
+  }
+
   function computeTwoPortStability(sMatrix){
     if(!Array.isArray(sMatrix)||sMatrix.length!==2||!Array.isArray(sMatrix[0])||!Array.isArray(sMatrix[1]))return null;
     var s11=sMatrix[0][0]||cx(0,0);
@@ -528,6 +545,79 @@
     return {samples:out,skipped:skipped,total:measSamples.length};
   }
 
+  /* ------------ Open/Short de-embedding (Koolen et al, 1991) ------------
+     Three-step removal of pad parasitics for on-wafer or in-fixture
+     measurements when separate Open and Short structures have been
+     measured alongside the DUT.
+       Y_DUT = inv( inv(Y_meas - Y_open) - inv(Y_short - Y_open) )
+     Two-step open-only is also supported when no short structure is
+     available: Y_DUT = Y_meas - Y_open. Refs assumed equal across
+     Y_meas / Y_open / Y_short and the DUT extraction. */
+  function deembedOpenShortAtSample(measSMatrix,openSMatrix,shortSMatrix,refOhms){
+    var Ymeas=convertSMatrixToYMatrix(measSMatrix,refOhms);
+    var Yopen=convertSMatrixToYMatrix(openSMatrix,refOhms);
+    if(!Ymeas||!Yopen)return null;
+    var Y1=matrixSubtract(Ymeas,Yopen);
+    if(!Y1)return null;
+    var Ydut;
+    if(shortSMatrix){
+      var Yshort=convertSMatrixToYMatrix(shortSMatrix,refOhms);
+      if(!Yshort)return null;
+      var Y2=matrixSubtract(Yshort,Yopen);
+      if(!Y2)return null;
+      var Z1=matrixInverse(Y1);
+      var Z2=matrixInverse(Y2);
+      if(!Z1||!Z2)return null;
+      var Zdut=matrixSubtract(Z1,Z2);
+      if(!Zdut)return null;
+      Ydut=matrixInverse(Zdut);
+    }else{
+      Ydut=Y1;
+    }
+    if(!Ydut)return null;
+    return convertYMatrixToSMatrix(Ydut,refOhms);
+  }
+  function buildDeembeddedOpenShortSamples(measSamples,openSamples,shortSamples,refOhms,opts){
+    if(!Array.isArray(measSamples)||!Array.isArray(openSamples))return null;
+    opts=opts||{};
+    var freqTolerance=Number(opts.freqTolerance)||1e-3;
+    function indexByFreq(samples){
+      var map={};
+      (samples||[]).forEach(function(s){if(s&&isFinite(s.freq))map[Math.round(s.freq*1e6)/1e6]=s;});
+      return map;
+    }
+    var openByFreq=indexByFreq(openSamples);
+    var shortByFreq=shortSamples?indexByFreq(shortSamples):null;
+    function findClosest(samples,target){
+      var bestDelta=Infinity,best=null;
+      for(var j=0;j<samples.length;j++){
+        var s=samples[j];
+        if(!s||!isFinite(s.freq))continue;
+        var delta=Math.abs(s.freq-target)/Math.max(target,1);
+        if(delta<bestDelta){bestDelta=delta;best=s;}
+      }
+      if(best&&bestDelta<=freqTolerance)return best;
+      return null;
+    }
+    var out=[],skipped=0;
+    for(var i=0;i<measSamples.length;i++){
+      var ms=measSamples[i];
+      if(!ms||!isFinite(ms.freq)||!Array.isArray(ms.sMatrix))continue;
+      var key=Math.round(ms.freq*1e6)/1e6;
+      var openS=openByFreq[key]||findClosest(openSamples,ms.freq);
+      if(!openS||!Array.isArray(openS.sMatrix)){skipped++;continue;}
+      var shortS=null;
+      if(shortByFreq){
+        shortS=shortByFreq[key]||findClosest(shortSamples,ms.freq);
+        if(!shortS||!Array.isArray(shortS.sMatrix)){skipped++;continue;}
+      }
+      var deembed=deembedOpenShortAtSample(ms.sMatrix,openS.sMatrix,shortS?shortS.sMatrix:null,refOhms);
+      if(!deembed){skipped++;continue;}
+      out.push({freq:ms.freq,sMatrix:deembed});
+    }
+    return {samples:out,skipped:skipped,total:measSamples.length};
+  }
+
   global.TouchstoneMathHelpers={
     cx:cx,
     cloneComplex:cloneComplex,
@@ -565,6 +655,9 @@
     abcdToS2Port:abcdToS2Port,
     matrixSquareRoot2x2:matrixSquareRoot2x2,
     deembed2xThruAtSample:deembed2xThruAtSample,
-    buildDeembedded2xThruSamples:buildDeembedded2xThruSamples
+    buildDeembedded2xThruSamples:buildDeembedded2xThruSamples,
+    convertYMatrixToSMatrix:convertYMatrixToSMatrix,
+    deembedOpenShortAtSample:deembedOpenShortAtSample,
+    buildDeembeddedOpenShortSamples:buildDeembeddedOpenShortSamples
   };
 })(window);
