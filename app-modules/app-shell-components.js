@@ -94,6 +94,85 @@
     return (global.AppAnalysis&&global.AppAnalysis.AnalysisFeatureCard)||featureCardFallback;
   }
 
+  var VIRIDIS_STOPS=[
+    [0.00,[68,1,84]],
+    [0.25,[59,82,139]],
+    [0.50,[33,145,140]],
+    [0.75,[94,201,98]],
+    [1.00,[253,231,37]]
+  ];
+  function viridisColor(t){
+    if(!isFinite(t))return [0,0,0];
+    if(t<=0)return VIRIDIS_STOPS[0][1];
+    if(t>=1)return VIRIDIS_STOPS[VIRIDIS_STOPS.length-1][1];
+    for(var i=1;i<VIRIDIS_STOPS.length;i++){
+      var hi=VIRIDIS_STOPS[i],lo=VIRIDIS_STOPS[i-1];
+      if(t<=hi[0]){
+        var f=(t-lo[0])/(hi[0]-lo[0]);
+        return [
+          Math.round(lo[1][0]+(hi[1][0]-lo[1][0])*f),
+          Math.round(lo[1][1]+(hi[1][1]-lo[1][1])*f),
+          Math.round(lo[1][2]+(hi[1][2]-lo[1][2])*f)
+        ];
+      }
+    }
+    return VIRIDIS_STOPS[VIRIDIS_STOPS.length-1][1];
+  }
+  function paintSpectrogram(canvas,spec){
+    if(!canvas||!spec||!spec.data)return;
+    var ctx=canvas.getContext("2d");
+    if(!ctx)return;
+    var dpr=(global.devicePixelRatio||1);
+    var W=canvas.clientWidth||240;
+    var H=canvas.clientHeight||80;
+    canvas.width=Math.floor(W*dpr);
+    canvas.height=Math.floor(H*dpr);
+    var img=ctx.createImageData(canvas.width,canvas.height);
+    var px=img.data;
+    var minDb=spec.minDb,maxDb=spec.maxDb;
+    if(maxDb-minDb<1)maxDb=minDb+1;
+    var floor=Math.max(minDb,maxDb-90);
+    var range=Math.max(1,maxDb-floor);
+    var binCount=spec.binCount,frameCount=spec.frameCount;
+    var data=spec.data;
+    for(var y=0;y<canvas.height;y++){
+      var ratio=1-(y+0.5)/canvas.height;
+      var b=Math.min(binCount-1,Math.max(0,Math.floor(ratio*binCount)));
+      for(var x=0;x<canvas.width;x++){
+        var f=Math.min(frameCount-1,Math.max(0,Math.floor((x+0.5)/canvas.width*frameCount)));
+        var db=data[f*binCount+b];
+        var t=(db-floor)/range;
+        if(t<0)t=0;else if(t>1)t=1;
+        var rgb=viridisColor(t);
+        var p=(y*canvas.width+x)*4;
+        px[p]=rgb[0];px[p+1]=rgb[1];px[p+2]=rgb[2];px[p+3]=255;
+      }
+    }
+    ctx.putImageData(img,0,0);
+  }
+  function SpectrogramCanvas(props){
+    var spec=props.spectrogram;
+    var canvasRef=React.useRef(null);
+    React.useEffect(function(){
+      if(spec&&canvasRef.current)paintSpectrogram(canvasRef.current,spec);
+    },[spec]);
+    if(!spec||!spec.data||!spec.frameCount||!spec.binCount){
+      return h("div",{style:{fontSize:11,color:"var(--muted)",fontStyle:"italic"}},"No spectrogram available.");
+    }
+    var topHz=spec.sampleRate?(spec.sampleRate/2):0;
+    var topLabel=topHz>=1e6?(topHz/1e6).toFixed(2)+" MHz":topHz>=1e3?(topHz/1e3).toFixed(1)+" kHz":topHz.toFixed(0)+" Hz";
+    var dur=spec.durationSec;
+    var durLabel=dur>=1?dur.toFixed(2)+" s":(dur*1000).toFixed(1)+" ms";
+    return h("div",{style:{display:"flex",flexDirection:"column",gap:2}},
+      h("canvas",{ref:canvasRef,style:{width:"100%",height:80,borderRadius:4,border:"1px solid var(--border)",background:"#000",display:"block"},"aria-label":"Spectrogram (frequency vs time)"}),
+      h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:10,fontFamily:"monospace",color:"var(--muted)"}},
+        h("span",null,"0 Hz"),
+        h("span",null,"0 s · "+durLabel),
+        h("span",null,topLabel)
+      )
+    );
+  }
+
   function isTouchstoneFile(file){
     if(!file)return false;
     if(file.format==="touchstone"||file.format==="touchstone-s-parameter"||file.touchstoneNetwork)return true;
@@ -906,6 +985,10 @@
               }));
             });
           }
+        }
+        if(f.format==="audio"&&f.spectrogram){
+          items.push(h(Sec,{key:"spec-"+f.id},"Spectrogram"));
+          items.push(h("div",{key:"spec-canvas-"+f.id,style:{padding:"2px 0"}},h(SpectrogramCanvas,{spectrogram:f.spectrogram})));
         }
         if(isTouchstoneFile(f)){
           var touchstoneRows=getTouchstoneSummaryRows(f);

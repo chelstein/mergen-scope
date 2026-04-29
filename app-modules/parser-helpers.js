@@ -653,6 +653,64 @@
     return mono;
   }
 
+  function computeAudioSpectrogram(samples,sampleRate,opts,maxFrames){
+    var settings=normalizeAudioFftOptions(opts);
+    var len=samples.length;
+    if(!len)throw new Error("Audio has no samples for spectrogram.");
+    var N=settings.fftSize;
+    while(N>len)N>>=1;
+    if(N<256)throw new Error("Audio is too short for the requested spectrogram FFT size.");
+    var hop=Math.max(1,Math.floor(N*(1-settings.overlap)));
+    var winFn=(AUDIO_WINDOWS[settings.window]||AUDIO_WINDOWS.hann).fn;
+    var win=winFn(N);
+    var winSum=0;for(var w=0;w<N;w++)winSum+=win[w];
+    var maxF=Math.max(8,Math.min(maxFrames||300,Math.floor((len-N)/hop)+1));
+    var totalFrames=Math.max(1,Math.floor((len-N)/hop)+1);
+    var stride=Math.max(1,Math.floor(totalFrames/maxF));
+    var halfBins=N>>1;
+    var binCount=halfBins+1;
+    var keptFrames=Math.floor(totalFrames/stride);
+    if(keptFrames<1)keptFrames=1;
+    var data=new Float32Array(keptFrames*binCount);
+    var frameTimes=new Float32Array(keptFrames);
+    var re=new Float64Array(N);
+    var im=new Float64Array(N);
+    var minDb=Infinity,maxDb=-Infinity;
+    for(var fi=0;fi<keptFrames;fi++){
+      var start=fi*stride*hop;
+      if(start+N>len)start=len-N;
+      for(var s=0;s<N;s++){re[s]=samples[start+s]*win[s];im[s]=0;}
+      radix2FFT(re,im);
+      var rowOffset=fi*binCount;
+      for(var b=0;b<binCount;b++){
+        var mag=Math.sqrt(re[b]*re[b]+im[b]*im[b]);
+        var scale=(b===0||b===halfBins)?1:2;
+        var amp=(mag/winSum)*scale;
+        var db=20*Math.log10(amp+1e-12);
+        if(db<minDb)minDb=db;
+        if(db>maxDb)maxDb=db;
+        data[rowOffset+b]=db;
+      }
+      frameTimes[fi]=start/sampleRate;
+    }
+    if(!isFinite(minDb))minDb=-120;
+    if(!isFinite(maxDb))maxDb=0;
+    return {
+      data:data,
+      frameTimes:frameTimes,
+      frameCount:keptFrames,
+      binCount:binCount,
+      sampleRate:sampleRate,
+      fftSize:N,
+      hopSize:hop,
+      stride:stride,
+      window:settings.window,
+      minDb:minDb,
+      maxDb:maxDb,
+      durationSec:len/sampleRate
+    };
+  }
+
   function computeAudioFftTrace(samples,sampleRate,opts){
     opts=normalizeAudioFftOptions(opts);
     var len=samples.length;
@@ -823,7 +881,9 @@
       if(metrics.thdNPercent!=null)meta["THD+N"]=metrics.thdNPercent.toFixed(3)+" %";
       if(metrics.snrDb!=null)meta["SNR (est.)"]=metrics.snrDb.toFixed(1)+" dB";
     }
-    return {format:"audio",meta:meta,traces:[trace]};
+    var spectrogram=null;
+    try{spectrogram=computeAudioSpectrogram(samples,sampleRate,opts,300);}catch(_){spectrogram=null;}
+    return {format:"audio",meta:meta,traces:[trace],spectrogram:spectrogram};
   }
 
   function parseAudioFile(arrayBuffer,fileName,options){
@@ -1028,6 +1088,7 @@
     isAudioFileName:isAudioFileName,
     parseAudioFile:parseAudioFile,
     parseAudioFromChannels:parseAudioFromChannels,
+    computeAudioSpectrogram:computeAudioSpectrogram,
     AUDIO_WINDOWS:AUDIO_WINDOWS,
     AUDIO_FFT_SIZES:AUDIO_FFT_SIZES,
     AUDIO_DEFAULT_OPTIONS:AUDIO_DEFAULT_OPTIONS,
