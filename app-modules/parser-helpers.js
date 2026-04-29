@@ -1256,7 +1256,21 @@
     }
     var spectrogram=null;
     try{spectrogram=computeAudioSpectrogram(samples,sampleRate,opts,300);}catch(_){spectrogram=null;}
-    return {format:"audio",meta:meta,traces:[trace],spectrogram:spectrogram};
+    var correlationBuffer=null;
+    try{
+      var maxCorrSeconds=30;
+      var maxCorrSamples=Math.floor(8000*maxCorrSeconds);
+      var srTarget=8000;
+      var decim=Math.max(1,Math.floor(sampleRate/srTarget));
+      var srCorr=sampleRate/decim;
+      var nOut=Math.min(maxCorrSamples,Math.floor(samples.length/decim));
+      if(nOut>=4096){
+        var corr=new Float32Array(nOut);
+        for(var i=0;i<nOut;i++)corr[i]=samples[i*decim];
+        correlationBuffer={samples:corr,sampleRate:srCorr};
+      }
+    }catch(_){correlationBuffer=null;}
+    return {format:"audio",meta:meta,traces:[trace],spectrogram:spectrogram,correlationBuffer:correlationBuffer};
   }
 
   function parseAudioFile(arrayBuffer,fileName,options){
@@ -1380,6 +1394,89 @@
       data.push({freq:centerFreqHz+binFreq,amp:dbIq});
     }
     return {data:data,fftSize:N,frames:frames,hop:hop};
+  }
+
+  function nextPow2(n){
+    var p=1;while(p<n)p<<=1;return p;
+  }
+  function compareTwoAudioSources(bufA,bufB){
+    if(!bufA||!bufB||!bufA.samples||!bufB.samples)return null;
+    var srA=Number(bufA.sampleRate)||1,srB=Number(bufB.sampleRate)||1;
+    if(Math.abs(srA-srB)>1)return {error:"Sample rates differ ("+srA.toFixed(0)+" vs "+srB.toFixed(0)+" Hz). Resample both files to the same rate first."};
+    var sr=srA;
+    var lenA=bufA.samples.length,lenB=bufB.samples.length;
+    var n=Math.min(lenA,lenB);
+    if(n<2048)return {error:"Need at least ~0.25 s of audio in both files."};
+    var maxN=Math.min(n,131072);
+    var a=new Float32Array(maxN),b=new Float32Array(maxN);
+    for(var i=0;i<maxN;i++){a[i]=bufA.samples[i];b[i]=bufB.samples[i];}
+    function meanRemove(buf){
+      var s=0;for(var k=0;k<buf.length;k++)s+=buf[k];
+      var m=s/buf.length;
+      for(var k2=0;k2<buf.length;k2++)buf[k2]-=m;
+    }
+    meanRemove(a);meanRemove(b);
+    var rmsA=0,rmsB=0;
+    for(var p1=0;p1<maxN;p1++){rmsA+=a[p1]*a[p1];rmsB+=b[p1]*b[p1];}
+    rmsA=Math.sqrt(rmsA/maxN);rmsB=Math.sqrt(rmsB/maxN);
+    var rmsDbA=20*Math.log10(rmsA||1e-12);
+    var rmsDbB=20*Math.log10(rmsB||1e-12);
+    var loudnessDiffDb=rmsDbA-rmsDbB;
+    var Nfft=nextPow2(2*maxN);
+    var aRe=new Float64Array(Nfft),aIm=new Float64Array(Nfft);
+    var bRe=new Float64Array(Nfft),bIm=new Float64Array(Nfft);
+    for(var c=0;c<maxN;c++){aRe[c]=a[c];bRe[c]=b[c];}
+    radix2FFT(aRe,aIm);
+    radix2FFT(bRe,bIm);
+    var pRe=new Float64Array(Nfft),pIm=new Float64Array(Nfft);
+    for(var f=0;f<Nfft;f++){
+      var ar=aRe[f],ai=aIm[f],br=bRe[f],biV=-bIm[f];
+      pRe[f]=ar*br-ai*biV;
+      pIm[f]=ar*biV+ai*br;
+    }
+    for(var fi=0;fi<Nfft;fi++)pIm[fi]=-pIm[fi];
+    radix2FFT(pRe,pIm);
+    for(var fk=0;fk<Nfft;fk++){pRe[fk]/=Nfft;pIm[fk]/=Nfft;}
+    var bestIdx=0,bestVal=-Infinity;
+    var searchRange=Math.min(Nfft,Math.floor(sr*5));
+    for(var s=0;s<searchRange;s++){
+      var v=pRe[s];
+      if(v>bestVal){bestVal=v;bestIdx=s;}
+    }
+    for(var s2=Nfft-searchRange;s2<Nfft;s2++){
+      var v2=pRe[s2];
+      if(v2>bestVal){bestVal=v2;bestIdx=s2;}
+    }
+    var lag=bestIdx<Nfft/2?bestIdx:bestIdx-Nfft;
+    var offsetSec=lag/sr;
+    var corrCoef=bestVal/(rmsA*rmsB+1e-30);
+    if(corrCoef>1)corrCoef=1;if(corrCoef<-1)corrCoef=-1;
+    var verdict;
+    if(corrCoef>=0.9)verdict="Same content · "+(Math.abs(offsetSec)<0.05?"in sync":(offsetSec>0?"B leads ":"A leads ")+Math.abs(offsetSec*1000).toFixed(0)+" ms");
+    else if(corrCoef>=0.6)verdict="Likely same content with processing diffs · offset "+(offsetSec*1000).toFixed(0)+" ms";
+    else if(corrCoef>=0.3)verdict="Possibly related (low correlation)";
+    else verdict="Unrelated content";
+    var matchScore;
+    if(corrCoef<0.3)matchScore=0;
+    else if(corrCoef<0.6)matchScore=Math.round((corrCoef-0.3)*100/0.3);
+    else if(corrCoef<0.9)matchScore=Math.round(50+(corrCoef-0.6)*100/0.6);
+    else matchScore=Math.round(80+(corrCoef-0.9)*200);
+    if(matchScore>100)matchScore=100;
+    var lipSyncOk=corrCoef>=0.6&&Math.abs(offsetSec)<=0.04;
+    return {
+      sampleRate:sr,
+      windowLengthSec:maxN/sr,
+      lagSamples:lag,
+      offsetSec:offsetSec,
+      offsetMs:offsetSec*1000,
+      correlation:corrCoef,
+      loudnessDiffDb:loudnessDiffDb,
+      rmsDbA:rmsDbA,
+      rmsDbB:rmsDbB,
+      verdict:verdict,
+      matchScore:matchScore,
+      lipSyncOk:lipSyncOk
+    };
   }
 
   function computeHdRadioMetrics(traceData,centerFreqHz){
@@ -1578,6 +1675,7 @@
     parseAudioFile:parseAudioFile,
     parseAudioFromChannels:parseAudioFromChannels,
     computeAudioSpectrogram:computeAudioSpectrogram,
+    compareTwoAudioSources:compareTwoAudioSources,
     AUDIO_WINDOWS:AUDIO_WINDOWS,
     AUDIO_FFT_SIZES:AUDIO_FFT_SIZES,
     AUDIO_DEFAULT_OPTIONS:AUDIO_DEFAULT_OPTIONS,
