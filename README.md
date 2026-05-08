@@ -4,12 +4,12 @@
   <img src="kedgeiq-icon.svg" alt="KedgeIQ icon" width="72">
 </p>
 
-[![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](https://alpgoxd.github.io/kedgeiq/)
+[![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](https://chelstein.github.io/mergen-scope/)
 [![License: GPL-3.0-only](https://img.shields.io/badge/License-GPL--3.0--only-blue.svg)](LICENSE)
 
 KedgeIQ is a free, open-source, browser-based viewer for Rohde & Schwarz spectrum analyzer `.dat` files and Touchstone `.sNp` files. Visualize RF spectrum data, network measurements, and spectral analysis online with no installation required.
 
-[**Open the viewer**](https://alpgoxd.github.io/kedgeiq/)
+[**Open the viewer**](https://chelstein.github.io/mergen-scope/)
 
 ![KedgeIQ preview](kedgeiq-preview.png)
 
@@ -63,7 +63,7 @@ KedgeIQ is a free, open-source, browser-based viewer for Rohde & Schwarz spectru
 ### Local Use
 
 ```bash
-git clone https://github.com/AlpGoXd/kedgeiq.git
+git clone https://github.com/chelstein/mergen-scope.git
 ```
 
 Open `kedgeiq.html` directly in a modern browser. No build step and no install.

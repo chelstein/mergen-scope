@@ -1,3 +1,3 @@
 User-agent: *
 Allow: /
-Sitemap: https://alpgoxd.github.io/kedgeiq/sitemap.xml
+Sitemap: https://chelstein.github.io/mergen-scope/sitemap.xml
