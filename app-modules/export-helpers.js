@@ -212,7 +212,7 @@
     var noiseTrace=buildNoisePsdTraceExport(options.npsdStats,options.noiseFilter);
     if(noiseTrace)analysisTraces.push(noiseTrace);
     return {
-      format:"mergen-scope-data-export",
+      format:"kedgeiq-data-export",
       version:2,
       exportedAt:options.exportedAt||new Date().toISOString(),
       traceCount:traces.length,
@@ -307,7 +307,7 @@
     var serializer=new XMLSerializer();
     var clone=cloneElementWithInlineStyles(element);
     var body=serializer.serializeToString(clone);
-    var title=escapeXml(options&&options.title?options.title:"Mergen Scope Chart Export");
+    var title=escapeXml(options&&options.title?options.title:"KedgeIQ Chart Export");
     var markup='<?xml version="1.0" encoding="UTF-8"?>'+
       '<svg xmlns="http://www.w3.org/2000/svg" width="'+width+'" height="'+height+'" viewBox="0 0 '+width+" "+height+'">'+
       "<title>"+title+"</title>"+

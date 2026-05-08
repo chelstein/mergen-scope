@@ -488,9 +488,9 @@
     var derivedTraceCount=(normalized.derivedTraces||[]).length;
     options=options&&typeof options==="object"?options:{};
     return {
-      kind:"mergen-scope-workspace",
+      kind:"kedgeiq-workspace",
       version:WORKSPACE_FILE_VERSION,
-      app:"Mergen Scope",
+      app:"KedgeIQ",
       exportedAt:options.exportedAt||new Date().toISOString(),
       summary:{
         fileCount:fileCount,
@@ -505,7 +505,7 @@
     var source=payload&&typeof payload==="object"?payload:null;
     var version;
     if(!source)throw new Error("Workspace file is empty or invalid.");
-    if(source.kind==="mergen-scope-workspace"||source.format==="workspace"){
+    if(source.kind==="kedgeiq-workspace"||source.format==="workspace"){
       version=Number(source.version||1);
       if(isFinite(version)&&version>WORKSPACE_FILE_VERSION){
         throw new Error("Workspace file version "+version+" is newer than this viewer supports.");
@@ -515,7 +515,7 @@
       }
       source=source.snapshot;
     } else if(!looksLikeWorkspaceSnapshot(source)){
-      throw new Error("File does not contain a valid Mergen Scope workspace.");
+      throw new Error("File does not contain a valid KedgeIQ workspace.");
     }
     return normalizeWorkspaceSnapshot(source);
   }

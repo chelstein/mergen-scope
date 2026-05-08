@@ -1,5 +1,5 @@
 <!--
-  Mergen Scope
+  KedgeIQ
   Recent changes:
   - Phase 1: marker selection, minima search, marker-driven IP3, import normalization, saved-result cleanup, local vendored runtime imports.
   - Phase 2: raw/derived trace model, Trace Ops, smoothing methods, trace math, interpolation choices, unit-aware warnings.
@@ -38,23 +38,23 @@
 <meta http-equiv="Expires" content="0">
 
 <!-- SEO Meta Tags -->
-<title>Spectrum Analyzer .DAT File Viewer | Mergen Scope</title>
+<title>Spectrum Analyzer .DAT File Viewer | KedgeIQ</title>
 <meta name="description" content="Open and visualize .dat files from spectrum analyzers. Multi-trace support, markers, noise PSD, IP3/TOI measurements. Free, browser-based, no dependencies.">
 <meta name="keywords" content="spectrum analyzer, .dat viewer, Rohde and Schwarz .dat, RF measurements, open source, browser waveform viewer">
 <meta name="author" content="Alp Gökalp">
 <meta name="robots" content="noindex, nofollow">
 <meta name="language" content="English">
-<link rel="icon" type="image/svg+xml" href="mergen-scope-icon.svg?v=2">
-<link rel="icon" type="image/png" sizes="48x48" href="mergen-scope-icon.png?v=1">
-<link rel="shortcut icon" href="mergen-scope-icon.png?v=1">
-<link rel="apple-touch-icon" href="mergen-scope-icon.png?v=1">
+<link rel="icon" type="image/svg+xml" href="kedgeiq-icon.svg?v=2">
+<link rel="icon" type="image/png" sizes="48x48" href="kedgeiq-icon.png?v=1">
+<link rel="shortcut icon" href="kedgeiq-icon.png?v=1">
+<link rel="apple-touch-icon" href="kedgeiq-icon.png?v=1">
 
 <!-- Open Graph / Social Media -->
 <meta property="og:type" content="website">
-<meta property="og:url" content="https://alpgoxd.github.io/mergen-scope/mergen_scope.html">
+<meta property="og:url" content="https://alpgoxd.github.io/kedgeiq/kedgeiq.html">
 <meta property="og:title" content="Spectrum Analyzer .DAT File Viewer">
 <meta property="og:description" content="Visualize spectrum analyzer measurements in your browser. Multi-trace, markers, IP3/TOI tools included.">
-<meta property="og:image" content="https://alpgoxd.github.io/mergen-scope/og-image.png">
+<meta property="og:image" content="https://alpgoxd.github.io/kedgeiq/og-image.png">
 
 <!-- Twitter Card -->
 <meta name="twitter:card" content="summary_large_image">
@@ -62,7 +62,7 @@
 <meta name="twitter:description" content="Open-source .dat file viewer for RF/microwave measurements">
 
 <!-- Canonical URL -->
-<link rel="canonical" href="https://alpgoxd.github.io/mergen-scope/mergen_scope.html">
+<link rel="canonical" href="https://alpgoxd.github.io/kedgeiq/kedgeiq.html">
 
 <!-- Structured Data (JSON-LD) -->
 <script type="application/ld+json">
@@ -71,7 +71,7 @@
   "@type": "WebApplication",
   "name": "Spectrum Analyzer .DAT File Viewer",
   "description": "Browser-based viewer for spectrum analyzer measurement files with advanced analysis tools",
-  "url": "https://alpgoxd.github.io/mergen-scope/",
+  "url": "https://alpgoxd.github.io/kedgeiq/",
   "author": {
     "@type": "Person",
     "name": "Alp Gökalp"
@@ -207,7 +207,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-sans);-webkit
 <script>
   /* Apply saved palette before paint to avoid a flash of standard colors. */
   try{
-    if(localStorage.getItem("mergenScopePalette")==="cb"){
+    if(localStorage.getItem("kedgeIQPalette")==="cb"){
       document.documentElement.setAttribute("data-palette","cb");
     }
   }catch(_){}
@@ -217,11 +217,11 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-sans);-webkit
 <div class="app-shell">
   <header class="brand-bar" role="banner">
     <div class="brand-bar-inner">
-      <a class="brand-lockup" href="./index.html" aria-label="Mergen Scope home">
+      <a class="brand-lockup" href="./index.html" aria-label="KedgeIQ home">
         <span class="brand-mark" aria-hidden="true"></span>
         <span style="display:flex;flex-direction:column;line-height:1;">
           <span class="brand-eyebrow">RF Lab</span>
-          <span class="brand-product">Mergen Scope<span class="brand-product-sep">&middot;</span><span class="brand-product-mod">Signal File Viewer</span></span>
+          <span class="brand-product">KedgeIQ<span class="brand-product-sep">&middot;</span><span class="brand-product-mod">Signal File Viewer</span></span>
         </span>
       </a>
       <span class="brand-actions" aria-hidden="false">
@@ -231,8 +231,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-sans);-webkit
         </button>
         <span class="brand-rose" aria-hidden="true"></span>
         <a href="./index.html">Overview</a>
-        <a href="https://github.com/alpgoxd/mergen-scope" target="_blank" rel="noopener">GitHub</a>
-        <a href="https://github.com/alpgoxd/mergen-scope/issues" target="_blank" rel="noopener">Issues</a>
+        <a href="https://github.com/alpgoxd/kedgeiq" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/alpgoxd/kedgeiq/issues" target="_blank" rel="noopener">Issues</a>
       </span>
     </div>
   </header>
@@ -295,10 +295,10 @@ createRoot(document.getElementById("root")).render(h(AppController.AppRoot));
     var on=document.documentElement.getAttribute("data-palette")==="cb";
     if(on){
       document.documentElement.removeAttribute("data-palette");
-      try{localStorage.removeItem("mergenScopePalette");}catch(_){}
+      try{localStorage.removeItem("kedgeIQPalette");}catch(_){}
     }else{
       document.documentElement.setAttribute("data-palette","cb");
-      try{localStorage.setItem("mergenScopePalette","cb");}catch(_){}
+      try{localStorage.setItem("kedgeIQPalette","cb");}catch(_){}
     }
     sync();
   });

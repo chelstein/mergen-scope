@@ -934,7 +934,7 @@
         h("rect",{x:2,y:4,width:20,height:16,rx:2,stroke:"var(--accent)",strokeWidth:1.5}),
         h("polyline",{points:"4,16 7,10 10,14 13,8 16,12 19,6 22,11",fill:"none",stroke:"var(--trace1)",strokeWidth:1.5})
       ),
-      h("span",{style:{fontWeight:700,fontSize:14}},"Mergen Scope"),
+      h("span",{style:{fontWeight:700,fontSize:14}},"KedgeIQ"),
       h("div",{style:{flex:1}}),
       btns.length?h("div",{style:{display:"flex",gap:5,flexWrap:"wrap"}},btns):null
     );

@@ -1,17 +1,17 @@
-# Mergen Scope
+# KedgeIQ
 
 <p>
-  <img src="mergen-scope-icon.svg" alt="Mergen Scope icon" width="72">
+  <img src="kedgeiq-icon.svg" alt="KedgeIQ icon" width="72">
 </p>
 
-[![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](https://alpgoxd.github.io/mergen-scope/)
+[![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](https://alpgoxd.github.io/kedgeiq/)
 [![License: GPL-3.0-only](https://img.shields.io/badge/License-GPL--3.0--only-blue.svg)](LICENSE)
 
-Mergen Scope is a free, open-source, browser-based viewer for Rohde & Schwarz spectrum analyzer `.dat` files and Touchstone `.sNp` files. Visualize RF spectrum data, network measurements, and spectral analysis online with no installation required.
+KedgeIQ is a free, open-source, browser-based viewer for Rohde & Schwarz spectrum analyzer `.dat` files and Touchstone `.sNp` files. Visualize RF spectrum data, network measurements, and spectral analysis online with no installation required.
 
-[**Open the viewer**](https://alpgoxd.github.io/mergen-scope/)
+[**Open the viewer**](https://alpgoxd.github.io/kedgeiq/)
 
-![Mergen Scope preview](mergen-scope-preview.png)
+![KedgeIQ preview](kedgeiq-preview.png)
 
 ---
 
@@ -63,10 +63,10 @@ Mergen Scope is a free, open-source, browser-based viewer for Rohde & Schwarz sp
 ### Local Use
 
 ```bash
-git clone https://github.com/AlpGoXd/mergen-scope.git
+git clone https://github.com/AlpGoXd/kedgeiq.git
 ```
 
-Open `mergen_scope.html` directly in a modern browser. No build step and no install.
+Open `kedgeiq.html` directly in a modern browser. No build step and no install.
 
 ### GitHub Pages Deployment
 
@@ -199,7 +199,7 @@ Detector;RMS
 
 No build step. The app still runs directly in the browser from GitHub Pages using local vendored runtime files under `vendor/`.
 
-`mergen_scope.html` is now a thin loader/bootstrap file. It mainly defines the document shell, loads the vendored browser runtime plus local `app-modules/*.js` files in order, and mounts `window.AppController.AppRoot` directly.
+`kedgeiq.html` is now a thin loader/bootstrap file. It mainly defines the document shell, loads the vendored browser runtime plus local `app-modules/*.js` files in order, and mounts `window.AppController.AppRoot` directly.
 
 The app runtime is split across browser-global modules under `app-modules/`:
 
@@ -232,7 +232,7 @@ Current helper split:
 - `app-modules/pane-helpers.js` for pane ownership, per-pane trace filtering, and pane Y-domain helpers
 - `app-modules/workspace-helpers.js` for workspace snapshot normalization, demo preset restoration, and session import/export payload helpers
 - `app-modules/export-helpers.js` for chart export rendering and trace/data export package helpers
-- `app-modules/app-hooks.js` for extracted React hook blocks plus helper wiring previously living in `mergen_scope.html`
+- `app-modules/app-hooks.js` for extracted React hook blocks plus helper wiring previously living in `kedgeiq.html`
 - `app-modules/app-shell-components.js` for shell UI pieces such as buttons, trace rows, marker/ref-line cards, top bar, and footer components
 - `app-modules/app-analysis-components.js` for the analysis card/component stack used by the right-side analysis panel
 - `app-modules/app-chart-components.js` for the empty-chart state and chart workspace rendering components
@@ -320,7 +320,7 @@ Feel free to open issues, suggest changes, and help make this tool better. The a
 
 ## Contributing
 
-Open an issue or submit a pull request. When testing changes, verify against the regression checklist in the HTML comment at the top of `mergen_scope.html`.
+Open an issue or submit a pull request. When testing changes, verify against the regression checklist in the HTML comment at the top of `kedgeiq.html`.
 
 ---
 
