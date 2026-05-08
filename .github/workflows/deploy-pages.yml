@@ -31,14 +31,14 @@ jobs:
       - name: Prepare site files
         run: |
           mkdir -p _site
-          cp index.html mergen_scope.html mergen-scope-preview.png robots.txt sitemap.xml _site/
-          cp mergen-scope-icon.svg mergen-scope-icon.png _site/
+          cp index.html kedgeiq.html kedgeiq-preview.png robots.txt sitemap.xml _site/
+          cp kedgeiq-icon.svg kedgeiq-icon.png _site/
           cp -r vendor _site/
           cp -r app-modules _site/
 
       - name: Validate runtime files
         run: |
-          test -f _site/mergen_scope.html
+          test -f _site/kedgeiq.html
           test -f _site/vendor/react/react.production.min.js
           test -f _site/app-modules/ui-helpers.js
           test -f _site/app-modules/trace-model.js
@@ -46,9 +46,9 @@ jobs:
           test -f _site/app-modules/workspace-helpers.js
           test -f _site/app-modules/export-helpers.js
           test -f _site/app-modules/parser-worker.js
-          test -f _site/mergen-scope-icon.svg
-          test -f _site/mergen-scope-icon.png
-          test -f _site/mergen-scope-preview.png
+          test -f _site/kedgeiq-icon.svg
+          test -f _site/kedgeiq-icon.png
+          test -f _site/kedgeiq-preview.png
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

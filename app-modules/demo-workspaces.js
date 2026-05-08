@@ -1625,7 +1625,7 @@ Values;501;
       "default":{
         id:"default",
         title:"Two-tone IP3 walkthrough",
-        subtitle:"Bundled demo traces from the mergen-21 repo",
+        subtitle:"Bundled demo traces from the kedgeiq repo",
         fileOrder:["low-drive","mid-drive","high-drive"],
         paneMode:2,
         activePaneId:"pane-2",

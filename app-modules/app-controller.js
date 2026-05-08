@@ -177,7 +177,7 @@ function useAppController(){
   var loadInitialAudioOptions=function(){
     var defaults=PH.AUDIO_DEFAULT_OPTIONS||{fftSize:8192,window:"hann",overlap:0.5,channel:"auto"};
     try{
-      var stored=window.localStorage&&window.localStorage.getItem("mergenScopeAudioFftOptions");
+      var stored=window.localStorage&&window.localStorage.getItem("kedgeIQAudioFftOptions");
       if(stored){
         var parsed=JSON.parse(stored);
         return PH.normalizeAudioFftOptions?PH.normalizeAudioFftOptions(parsed):Object.assign({},defaults,parsed);
@@ -192,12 +192,12 @@ function useAppController(){
   var setAudioFftOptions=useCallback(function(next){
     var normalized=PH.normalizeAudioFftOptions?PH.normalizeAudioFftOptions(next):next;
     setAudioFftOptionsRaw(normalized);
-    try{window.localStorage&&window.localStorage.setItem("mergenScopeAudioFftOptions",JSON.stringify(normalized));}catch(_){}
+    try{window.localStorage&&window.localStorage.setItem("kedgeIQAudioFftOptions",JSON.stringify(normalized));}catch(_){}
   },[]);
   var loadInitialIqOptions=function(){
     var defaults=PH.IQ_DEFAULT_OPTIONS||{iqSampleFormat:"cf32_le",iqSampleRateHz:2400000,iqCenterFreqHz:0};
     try{
-      var stored=window.localStorage&&window.localStorage.getItem("mergenScopeIqOptions");
+      var stored=window.localStorage&&window.localStorage.getItem("kedgeIQIqOptions");
       if(stored)return Object.assign({},defaults,JSON.parse(stored));
     }catch(_){}
     return Object.assign({},defaults);
@@ -211,7 +211,7 @@ function useAppController(){
     if(!isFinite(cf))normalized.iqCenterFreqHz=0;
     if(!normalized.iqSampleFormat)normalized.iqSampleFormat="cf32_le";
     setIqOptionsRaw(normalized);
-    try{window.localStorage&&window.localStorage.setItem("mergenScopeIqOptions",JSON.stringify(normalized));}catch(_){}
+    try{window.localStorage&&window.localStorage.setItem("kedgeIQIqOptions",JSON.stringify(normalized));}catch(_){}
   },[]);
   var fileCtl=useFileStore({
     audioFftOptions:audioFftOptions,
@@ -1301,7 +1301,7 @@ function useAppController(){
   function clearAllFiles(){
     clearWorkspaceToBaseline();
     workspaceAutoSaveSkipUntilRef.current=Date.now()+1500;
-    try{window.localStorage&&window.localStorage.removeItem("mergenScopeWorkspace");}catch(_){}
+    try{window.localStorage&&window.localStorage.removeItem("kedgeIQWorkspace");}catch(_){}
   }
   function restoreSnapshot(snapshot){
     setShowImportExportPanel(false);
@@ -1365,7 +1365,7 @@ function useAppController(){
       syncFileIdCounter:syncFileIdCounterFromSnapshot
     });
   }
-  var WORKSPACE_STORAGE_KEY="mergenScopeWorkspace";
+  var WORKSPACE_STORAGE_KEY="kedgeIQWorkspace";
   var workspaceAutoSaveTimerRef=useRef(null);
   var workspaceAutoSaveSkipUntilRef=useRef(0);
   var sharedHashLoadedRef=useRef(false);
@@ -1530,7 +1530,7 @@ function useAppController(){
     function pad(value){
       return String(value).padStart(2,"0");
     }
-    return "mergen-scope-workspace-"+now.getFullYear()+pad(now.getMonth()+1)+pad(now.getDate())+"-"+pad(now.getHours())+pad(now.getMinutes())+pad(now.getSeconds())+".json";
+    return "kedgeiq-workspace-"+now.getFullYear()+pad(now.getMonth()+1)+pad(now.getDate())+"-"+pad(now.getHours())+pad(now.getMinutes())+pad(now.getSeconds())+".json";
   }
   function exportWorkspace(){
     try{
@@ -1602,7 +1602,7 @@ function useAppController(){
         savedNoiseResults:noiseResults,
         savedIP3Results:ip3Results
       });
-      downloadJsonFile(buildTimestampedDownloadName("mergen-scope-data-export","json"),payload);
+      downloadJsonFile(buildTimestampedDownloadName("kedgeiq-data-export","json"),payload);
       setError(null);
     }catch(err){
       setError("Unable to export trace data: "+(err&&err.message?err.message:"Unknown error."));
@@ -1682,7 +1682,7 @@ function useAppController(){
         setError("No visible traces in the active pane to export.");
         return;
       }
-      downloadBlobFile(new Blob([built.csv],{type:"text/csv;charset=utf-8"}),buildTimestampedDownloadName("mergen-scope-pane","csv"));
+      downloadBlobFile(new Blob([built.csv],{type:"text/csv;charset=utf-8"}),buildTimestampedDownloadName("kedgeiq-pane","csv"));
       setError(null);
     }catch(err){
       setError("Unable to export CSV: "+(err&&err.message?err.message:"Unknown error."));
@@ -1691,7 +1691,7 @@ function useAppController(){
   function exportChartSvg(){
     try{
       var exportAsset=buildChartVectorExport({kind:"svg"});
-      downloadBlobFile(new Blob([exportAsset.markup],{type:"image/svg+xml;charset=utf-8"}),buildTimestampedDownloadName("mergen-scope-chart","svg"));
+      downloadBlobFile(new Blob([exportAsset.markup],{type:"image/svg+xml;charset=utf-8"}),buildTimestampedDownloadName("kedgeiq-chart","svg"));
       setError(null);
     }catch(err){
       setError("Unable to export chart SVG: "+(err&&err.message?err.message:"Unknown error."));
@@ -1700,7 +1700,7 @@ function useAppController(){
   function exportChartPng(){
     try{
       var exportAsset=buildChartVectorExport({kind:"png"});
-      exportSvgMarkupAsPngFile(exportAsset.markup,exportAsset.width,exportAsset.height,buildTimestampedDownloadName("mergen-scope-chart","png"),{scale:3,backgroundColor:exportAsset.backgroundColor}).then(function(){
+      exportSvgMarkupAsPngFile(exportAsset.markup,exportAsset.width,exportAsset.height,buildTimestampedDownloadName("kedgeiq-chart","png"),{scale:3,backgroundColor:exportAsset.backgroundColor}).then(function(){
         setError(null);
       }).catch(function(err){
         setError("Unable to export chart PNG: "+(err&&err.message?err.message:"Unknown error."));
@@ -2710,7 +2710,7 @@ function useAppController(){
     if(workspaceAutoSaveTimerRef.current){window.clearTimeout(workspaceAutoSaveTimerRef.current);workspaceAutoSaveTimerRef.current=null;}
     if(Date.now()<workspaceAutoSaveSkipUntilRef.current)return;
     if(!hasData){
-      try{window.localStorage&&window.localStorage.removeItem("mergenScopeWorkspace");}catch(_){}
+      try{window.localStorage&&window.localStorage.removeItem("kedgeIQWorkspace");}catch(_){}
       return;
     }
     workspaceAutoSaveTimerRef.current=window.setTimeout(function(){
@@ -2718,8 +2718,8 @@ function useAppController(){
       try{
         var payload=buildWorkspaceExportPackage(buildCurrentWorkspaceSnapshot());
         encodeShareableWorkspace(payload).then(function(token){
-          try{window.localStorage&&window.localStorage.setItem("mergenScopeWorkspace",token);}catch(quotaErr){
-            try{window.localStorage&&window.localStorage.removeItem("mergenScopeWorkspace");}catch(_){}
+          try{window.localStorage&&window.localStorage.setItem("kedgeIQWorkspace",token);}catch(quotaErr){
+            try{window.localStorage&&window.localStorage.removeItem("kedgeIQWorkspace");}catch(_){}
           }
         }).catch(function(){});
       }catch(_){}
@@ -2846,7 +2846,7 @@ AppBoundary.prototype.render=function(){
   if(this.state&&this.state.error){
     return h("div",{style:{minHeight:"100vh",background:"var(--bg)",color:"var(--text)",padding:24,fontFamily:"monospace"}},
       h("div",{style:{maxWidth:960,margin:"0 auto",border:"1px solid var(--err-bd)",background:"var(--err-bg)",color:"var(--err-tx)",borderRadius:12,padding:20,whiteSpace:"pre-wrap",lineHeight:1.5}},
-        "Mergen Scope failed to render.\n\n"+
+        "KedgeIQ failed to render.\n\n"+
         (this.state.error&&this.state.error.stack?this.state.error.stack:String(this.state.error))+
         (this.state.componentStack?("\n\nComponent stack:\n"+this.state.componentStack):"")
       )

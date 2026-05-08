@@ -46,7 +46,7 @@ jobs:
               def error(self, msg):
                   self.errors.append(msg)
           fail = False
-          for path in ["index.html", "mergen_scope.html"]:
+          for path in ["index.html", "kedgeiq.html"]:
               p = P()
               text = pathlib.Path(path).read_text(encoding="utf-8")
               try:

@@ -1,4 +1,4 @@
-/* Mergen Scope parser/FFT worker.
+/* KedgeIQ parser/FFT worker.
    Runs the heavy CPU-bound parser and FFT pipelines off the main thread
    so large files don't freeze the UI. The worker shares the same module
    files as the main thread; AudioContext is main-thread only, so the
