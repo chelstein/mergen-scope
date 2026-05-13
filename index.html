@@ -562,6 +562,14 @@
             <span class="format-name" role="cell">.mp3 / .wav</span>
             <span class="format-note" role="cell">Decoded via Web Audio API; rendered as Hann-windowed averaged FFT (dBFS vs Hz).</span>
           </div>
+          <div class="format-row" role="row">
+            <span class="format-name" role="cell">.cfile / .cf32 / .cs16 / .cu8</span>
+            <span class="format-note" role="cell">Raw IQ captures from HackRF, RTL-SDR, and similar SDRs. RF FFT + AM/FM demodulated audio spectra + RF waterfall.</span>
+          </div>
+          <div class="format-row" role="row">
+            <span class="format-name" role="cell">.sigmf-meta + .sigmf-data</span>
+            <span class="format-note" role="cell">SigMF pairs — drop both files together. Center frequency, sample rate, and annotations read from metadata automatically.</span>
+          </div>
         </div>
       </section>
 
