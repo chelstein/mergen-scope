@@ -2027,6 +2027,7 @@
     catch(e){throw new Error("SigMF metadata is not valid JSON: "+(e&&e.message||e));}
     var globalMeta=meta&&meta.global?meta.global:{};
     var captures=Array.isArray(meta&&meta.captures)?meta.captures:[];
+    var annotations=Array.isArray(meta&&meta.annotations)?meta.annotations:[];
     var firstCapture=captures[0]||{};
     var datatype=String(globalMeta["core:datatype"]||"cf32_le").toLowerCase();
     var sr=Number(globalMeta["core:sample_rate"]);
@@ -2044,6 +2045,41 @@
     if(globalMeta["core:description"])extra["Description"]=String(globalMeta["core:description"]);
     if(firstCapture["core:datetime"])extra["Capture Time"]=String(firstCapture["core:datetime"]);
     if(globalMeta["core:version"])extra["SigMF Version"]=String(globalMeta["core:version"]);
+    if(captures.length>1){
+      extra["Capture Segments"]=captures.length+" segments";
+      var cfList=captures.map(function(c,i){
+        var f=Number(c["core:frequency"]);
+        return isFinite(f)?(f>=1e6?(f/1e6).toFixed(3)+" MHz":f>=1e3?(f/1e3).toFixed(1)+" kHz":f.toFixed(0)+" Hz"):"seg "+(i+1);
+      }).join(", ");
+      extra["Segment Frequencies"]=cfList;
+    }
+    if(annotations.length){
+      extra["Annotations"]=annotations.length+" annotation"+(annotations.length!==1?"s":"");
+      var annLimit=Math.min(annotations.length,8);
+      for(var ai=0;ai<annLimit;ai++){
+        var ann=annotations[ai];
+        var annLabel=String(ann["core:label"]||ann["core:comment"]||("Ann "+(ai+1)));
+        var annParts=[];
+        var fLo=Number(ann["core:freq_lower_edge"]);
+        var fHi=Number(ann["core:freq_upper_edge"]);
+        function fmtAnnotHz(hz){
+          return hz>=1e9?(hz/1e9).toFixed(4)+" GHz":hz>=1e6?(hz/1e6).toFixed(4)+" MHz":hz>=1e3?(hz/1e3).toFixed(2)+" kHz":hz.toFixed(0)+" Hz";
+        }
+        if(isFinite(fLo)&&isFinite(fHi))annParts.push(fmtAnnotHz(fLo)+" – "+fmtAnnotHz(fHi));
+        else if(isFinite(fLo))annParts.push("from "+fmtAnnotHz(fLo));
+        else if(isFinite(fHi))annParts.push("to "+fmtAnnotHz(fHi));
+        var sSt=Number(ann["core:sample_start"]);
+        var sCt=Number(ann["core:sample_count"]);
+        if(isFinite(sSt)&&sr>0){
+          var tStart=(sSt/sr).toFixed(3)+"s";
+          var tEnd=isFinite(sCt)?(" – "+(((sSt+sCt)/sr).toFixed(3))+"s"):"";
+          annParts.push("t="+tStart+tEnd);
+        }
+        if(ann["core:comment"]&&ann["core:label"])annParts.push('"'+String(ann["core:comment"])+'"');
+        extra["Ann "+(ai+1)+": "+annLabel]=annParts.join(" · ")||"(no range)";
+      }
+      if(annotations.length>annLimit)extra["..."]=((annotations.length-annLimit)+" more annotations");
+    }
     return buildIqResult(dataArrayBuffer,baseName+".sigmf-data",fmt,sr,cf,merged,extra);
   }
 
