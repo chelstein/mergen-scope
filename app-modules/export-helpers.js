@@ -421,6 +421,37 @@
     });
   }
 
+  function svgMarkupToPngBlob(markup,width,height,options){
+    var scale=Math.max(1,Math.round(options&&options.scale?options.scale:2));
+    return new Promise(function(resolve,reject){
+      var svgBlob=new Blob([String(markup||"")],{type:"image/svg+xml;charset=utf-8"});
+      var urlApi=global.URL||global.webkitURL;
+      if(!urlApi||!urlApi.createObjectURL){reject(new Error("This browser does not support image export."));return;}
+      var url=urlApi.createObjectURL(svgBlob);
+      var img=new Image();
+      img.onload=function(){
+        try{
+          var canvas=global.document.createElement("canvas");
+          canvas.width=Math.max(1,Math.round(width||1))*scale;
+          canvas.height=Math.max(1,Math.round(height||1))*scale;
+          var ctx=canvas.getContext("2d");
+          if(!ctx){urlApi.revokeObjectURL(url);reject(new Error("Unable to create canvas context."));return;}
+          ctx.setTransform(scale,0,0,scale,0,0);
+          ctx.fillStyle=(options&&options.backgroundColor)||"#000000";
+          ctx.fillRect(0,0,Math.max(1,width||1),Math.max(1,height||1));
+          ctx.drawImage(img,0,0,Math.max(1,width||1),Math.max(1,height||1));
+          canvas.toBlob(function(pngBlob){
+            urlApi.revokeObjectURL(url);
+            if(!pngBlob){reject(new Error("PNG render produced no output."));return;}
+            resolve(pngBlob);
+          },"image/png");
+        }catch(err){urlApi.revokeObjectURL(url);reject(err);}
+      };
+      img.onerror=function(){urlApi.revokeObjectURL(url);reject(new Error("Unable to render SVG for PNG export."));};
+      img.src=url;
+    });
+  }
+
   function bytesToBase64url(bytes){
     var bin="";
     for(var i=0;i<bytes.length;i+=0x4000){
@@ -485,6 +516,7 @@
     exportElementAsSvgFile:exportElementAsSvgFile,
     exportElementAsPngFile:exportElementAsPngFile,
     exportSvgMarkupAsPngFile:exportSvgMarkupAsPngFile,
+    svgMarkupToPngBlob:svgMarkupToPngBlob,
     encodeShareableWorkspace:encodeShareableWorkspace,
     decodeShareableWorkspace:decodeShareableWorkspace
   };
