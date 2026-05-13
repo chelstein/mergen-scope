@@ -1924,7 +1924,10 @@
     }
     mean/=nOut;
     for(var k=0;k<nOut;k++)env[k]-=mean;
-    return computeAudioFftTrace(env,audioRate,opts);
+    var result=computeAudioFftTrace(env,audioRate,opts);
+    result.pcmSamples=env;
+    result.audioRate=audioRate;
+    return result;
   }
 
   function demodulateIqFm(I,Q,sampleRate,opts){
@@ -1940,7 +1943,27 @@
       demod[i]=denom<1e-20?0:(Q[si]*I[sj]-I[si]*Q[sj])/denom;
     }
     if(nOut>0)demod[0]=nOut>1?demod[1]:0;
-    return computeAudioFftTrace(demod,audioRate,opts);
+    var result=computeAudioFftTrace(demod,audioRate,opts);
+    result.pcmSamples=demod;
+    result.audioRate=audioRate;
+    return result;
+  }
+
+  function demodulateIqFmAtOffset(I,Q,sampleRate,offsetHz,opts){
+    var n=I.length;
+    var shiftedI=new Float32Array(n);
+    var shiftedQ=new Float32Array(n);
+    var phase=0;
+    var dphase=2*Math.PI*offsetHz/sampleRate;
+    for(var i=0;i<n;i++){
+      var cos=Math.cos(phase),sin=Math.sin(phase);
+      shiftedI[i]=I[i]*cos+Q[i]*sin;
+      shiftedQ[i]=Q[i]*cos-I[i]*sin;
+      phase+=dphase;
+      if(phase>Math.PI)phase-=2*Math.PI;
+      else if(phase<-Math.PI)phase+=2*Math.PI;
+    }
+    return demodulateIqFm(shiftedI,shiftedQ,sampleRate,opts);
   }
 
   function buildIqResult(arrayBuffer,fileName,format,sampleRate,centerFreqHz,opts,extraMeta){
@@ -1987,6 +2010,7 @@
     }
     var traces=[trace];
     var amTrace=null;
+    var amPcm=null,amAudioRate=0;
     try{
       var amResult=demodulateIqAm(iq.I,iq.Q,sampleRate,opts);
       amTrace=makeTrace(prefix+"(AM demod)",fileName,"IQ_AM",fc);
@@ -1994,20 +2018,26 @@
       amTrace.units={x:"Hz",y:"dBFS"};
       amTrace.kind="derived";
       meta["AM Audio Rate"]={value:Math.round(sampleRate/Math.max(1,Math.floor(sampleRate/48000))),unit:"Hz"};
+      amPcm=amResult.pcmSamples||null;
+      amAudioRate=amResult.audioRate||0;
     }catch(_){amTrace=null;}
     if(amTrace)traces.push(amTrace);
     var fmTrace=null;
+    var fmPcm=null;
     try{
       var fmResult=demodulateIqFm(iq.I,iq.Q,sampleRate,opts);
       fmTrace=makeTrace(prefix+"(FM demod)",fileName,"IQ_FM",fc);
       fmTrace.data=normalizeTraceData(fmResult.data);
       fmTrace.units={x:"Hz",y:"dBFS"};
       fmTrace.kind="derived";
+      fmPcm=fmResult.pcmSamples||null;
     }catch(_){fmTrace=null;}
     if(fmTrace)traces.push(fmTrace);
+    var iqDemodPcm=(amPcm||fmPcm)?{amSamples:amPcm,fmSamples:fmPcm,rate:amAudioRate||48000}:null;
     var spectrogram=null;
     try{spectrogram=computeIqSpectrogram(iq.I,iq.Q,sampleRate,centerFreqHz,opts,300);}catch(_){spectrogram=null;}
-    return {format:"iq",meta:meta,traces:traces,spectrogram:spectrogram};
+    var iqRaw={I:iq.I,Q:iq.Q,sampleRate:sampleRate,centerFreqHz:isFinite(centerFreqHz)?centerFreqHz:0};
+    return {format:"iq",meta:meta,traces:traces,spectrogram:spectrogram,iqDemodPcm:iqDemodPcm,iqRaw:iqRaw};
   }
 
   function parseIqFile(arrayBuffer,fileName,options){
@@ -2121,6 +2151,7 @@
     IQ_DEFAULT_OPTIONS:IQ_DEFAULT_OPTIONS,
     computeIqSpectrogram:computeIqSpectrogram,
     demodulateIqAm:demodulateIqAm,
-    demodulateIqFm:demodulateIqFm
+    demodulateIqFm:demodulateIqFm,
+    demodulateIqFmAtOffset:demodulateIqFmAtOffset
   };
 })(window);

@@ -503,6 +503,30 @@
     });
   }
 
+  function buildWavBlob(samples,sampleRate){
+    var nSamples=samples.length;
+    var dataSize=nSamples*2;
+    var buf=new ArrayBuffer(44+dataSize);
+    var v=new DataView(buf);
+    function str(off,s){for(var i=0;i<s.length;i++)v.setUint8(off+i,s.charCodeAt(i));}
+    str(0,"RIFF");v.setUint32(4,36+dataSize,true);
+    str(8,"WAVE");str(12,"fmt ");
+    v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);
+    v.setUint32(24,sampleRate,true);v.setUint32(28,sampleRate*2,true);
+    v.setUint16(32,2,true);v.setUint16(34,16,true);
+    str(36,"data");v.setUint32(40,dataSize,true);
+    var maxAbs=0;
+    for(var i=0;i<nSamples;i++){var a=Math.abs(samples[i]);if(a>maxAbs)maxAbs=a;}
+    var scale=maxAbs>0?32767/maxAbs:32767;
+    var off=44;
+    for(var j=0;j<nSamples;j++){
+      var val=Math.round(samples[j]*scale);
+      if(val>32767)val=32767;else if(val<-32768)val=-32768;
+      v.setInt16(off,val,true);off+=2;
+    }
+    return new Blob([buf],{type:"audio/wav"});
+  }
+
   global.ExportHelpers={
     cloneTraceForExport:cloneTraceForExport,
     buildNoisePsdTraceExport:buildNoisePsdTraceExport,
@@ -517,6 +541,7 @@
     exportElementAsPngFile:exportElementAsPngFile,
     exportSvgMarkupAsPngFile:exportSvgMarkupAsPngFile,
     svgMarkupToPngBlob:svgMarkupToPngBlob,
+    buildWavBlob:buildWavBlob,
     encodeShareableWorkspace:encodeShareableWorkspace,
     decodeShareableWorkspace:decodeShareableWorkspace
   };

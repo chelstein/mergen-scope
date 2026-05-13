@@ -176,17 +176,72 @@
     var hiHz=isIq?cf+bwHz/2:bwHz/2;
     var midHz=(loHz+hiHz)/2;
     var dbRange="dB range: "+spec.minDb.toFixed(0)+" … "+spec.maxDb.toFixed(0)+" dBFS";
+    var onFreqClick=props.onFreqClick;
+    function handleCanvasClick(ev){
+      if(!onFreqClick||!canvasRef.current)return;
+      var rect=canvasRef.current.getBoundingClientRect();
+      var x=ev.clientX-rect.left;
+      var frac=x/rect.width;
+      var clickedHz=loHz+frac*(hiHz-loHz);
+      var offsetHz=clickedHz-cf;
+      onFreqClick(offsetHz);
+    }
     return h("div",{style:{display:"flex",flexDirection:"column",gap:3}},
       h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:10,fontFamily:"monospace",color:"var(--accent)",marginBottom:1}},
-        h("span",null,isIq?"RF Waterfall":"Spectrogram"),
+        h("span",null,isIq?"RF Waterfall (click to retune FM)":"Spectrogram"),
         h("span",null,dbRange)
       ),
-      h("canvas",{ref:canvasRef,style:{width:"100%",height:180,borderRadius:4,border:"1px solid var(--border)",background:"#000",display:"block"},"aria-label":"Spectrogram (frequency vs time)"}),
+      h("canvas",{ref:canvasRef,onClick:onFreqClick?handleCanvasClick:null,style:{width:"100%",height:180,borderRadius:4,border:"1px solid var(--border)",background:"#000",display:"block",cursor:onFreqClick?"crosshair":"default"},"aria-label":"Spectrogram (frequency vs time)"}),
       h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:10,fontFamily:"monospace",color:"var(--dim)"}},
         h("span",null,fmtHz(loHz)),
         h("span",null,fmtHz(midHz)+" · "+durLabel),
         h("span",null,fmtHz(hiHz))
       )
+    );
+  }
+
+  function IqAudioPlayer(props){
+    var pcm=props.iqDemodPcm;
+    var C=props.C||{};
+    var onDownloadWav=props.onDownloadWav;
+    var audioCtxRef=React.useRef(null);
+    var sourceRef=React.useRef(null);
+    var _ps=React.useState(null),playing=_ps[0],setPlaying=_ps[1];
+    if(!pcm)return null;
+    var accent=C.accent||"var(--accent)";
+    function stop(){
+      if(sourceRef.current){try{sourceRef.current.stop();}catch(_){}sourceRef.current=null;}
+      setPlaying(null);
+    }
+    function play(mode){
+      stop();
+      var samples=mode==="fm"?pcm.fmSamples:pcm.amSamples;
+      if(!samples||!samples.length)return;
+      var rate=pcm.rate||48000;
+      try{
+        if(!audioCtxRef.current||audioCtxRef.current.state==="closed"){
+          audioCtxRef.current=new(window.AudioContext||window.webkitAudioContext)();
+        }
+        var ctx=audioCtxRef.current;
+        if(ctx.state==="suspended")ctx.resume();
+        var buf=ctx.createBuffer(1,samples.length,Math.round(rate));
+        buf.copyToChannel(samples,0);
+        var src=ctx.createBufferSource();
+        src.buffer=buf;
+        src.connect(ctx.destination);
+        src.onended=function(){setPlaying(null);sourceRef.current=null;};
+        src.start();
+        sourceRef.current=src;
+        setPlaying(mode);
+      }catch(e){setPlaying(null);}
+    }
+    var bs={padding:"3px 8px",fontSize:11,borderRadius:4,cursor:"pointer",background:"transparent",color:accent,border:"1px solid "+accent,fontWeight:600,lineHeight:1.4};
+    var bas=Object.assign({},bs,{background:accent+"22"});
+    return h("div",{style:{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",padding:"3px 0"}},
+      pcm.amSamples?h("button",{style:playing==="am"?bas:bs,onClick:function(){if(playing==="am")stop();else play("am");},title:"Play AM (envelope) demodulated audio"},playing==="am"?"⏹ AM":"▶ AM"):null,
+      pcm.fmSamples?h("button",{style:playing==="fm"?bas:bs,onClick:function(){if(playing==="fm")stop();else play("fm");},title:"Play FM demodulated audio"},playing==="fm"?"⏹ FM":"▶ FM"):null,
+      playing?h("button",{style:Object.assign({},bs,{color:"#f55",borderColor:"#f55"}),onClick:stop,title:"Stop playback"},"■"):null,
+      onDownloadWav?h("button",{style:bs,onClick:function(){onDownloadWav(playing==="fm"?"fm":"am");},title:"Download demodulated audio as WAV"},"↓ WAV"):null
     );
   }
 
@@ -1051,7 +1106,13 @@
         }
         if((f.format==="audio"||f.format==="iq")&&f.spectrogram){
           items.push(h(Sec,{key:"spec-"+f.id},f.format==="iq"?"RF Waterfall":"Spectrogram"));
-          items.push(h("div",{key:"spec-canvas-"+f.id,style:{padding:"2px 0"}},h(SpectrogramCanvas,{spectrogram:f.spectrogram})));
+          var retuneCb=(f.format==="iq"&&p.onIqRetuneFm)?function(fid){return function(offsetHz){p.onIqRetuneFm(fid,offsetHz);};}(f.id):null;
+          items.push(h("div",{key:"spec-canvas-"+f.id,style:{padding:"2px 0"}},h(SpectrogramCanvas,{spectrogram:f.spectrogram,onFreqClick:retuneCb})));
+        }
+        if(f.format==="iq"&&f.iqDemodPcm){
+          items.push(h(Sec,{key:"iq-audio-sec-"+f.id},"IQ Audio · Playback & Export"));
+          var dlCb=(p.onIqDownloadWav)?function(fid){return function(mode){p.onIqDownloadWav(fid,mode);};}(f.id):null;
+          items.push(h(IqAudioPlayer,{key:"iq-player-"+f.id,iqDemodPcm:f.iqDemodPcm,C:C,onDownloadWav:dlCb}));
         }
         if(isTouchstoneFile(f)){
           var touchstoneRows=getTouchstoneSummaryRows(f);

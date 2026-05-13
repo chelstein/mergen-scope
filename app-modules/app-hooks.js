@@ -864,7 +864,7 @@ function useFileStore(dep){
       else{
         var fileId=parsed._fileId||(++_fid);
         parsed.traces.forEach(function(tr){tr.fileId=fileId;tr.fileName=file.name;});
-        results.push({id:fileId,fileName:file.name,meta:parsed.meta,traces:parsed.traces,format:parsed.format||"rs-dat",touchstoneNetwork:parsed.touchstoneNetwork||null,touchstoneUiState:parsed.touchstoneUiState||null,spectrogram:parsed.spectrogram||null,correlationBuffer:parsed.correlationBuffer||null});
+        results.push({id:fileId,fileName:file.name,meta:parsed.meta,traces:parsed.traces,format:parsed.format||"rs-dat",touchstoneNetwork:parsed.touchstoneNetwork||null,touchstoneUiState:parsed.touchstoneUiState||null,spectrogram:parsed.spectrogram||null,correlationBuffer:parsed.correlationBuffer||null,iqDemodPcm:parsed.iqDemodPcm||null,iqRaw:parsed.iqRaw||null});
       }
     }
     function finalize(){
