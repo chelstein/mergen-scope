@@ -1857,6 +1857,92 @@
     };
   }
 
+  function computeIqSpectrogram(I,Q,sampleRate,centerFreqHz,opts,maxFrames){
+    var settings=normalizeAudioFftOptions(opts);
+    var len=I.length;
+    if(!len)throw new Error("IQ stream has no samples for spectrogram.");
+    var N=settings.fftSize;
+    while(N>len)N>>=1;
+    if(N<256)throw new Error("IQ stream too short for spectrogram.");
+    var hop=Math.max(1,Math.floor(N*(1-settings.overlap)));
+    var winFn=(AUDIO_WINDOWS[settings.window]||AUDIO_WINDOWS.hann).fn;
+    var win=winFn(N);
+    var winSum=0;for(var w=0;w<N;w++)winSum+=win[w];
+    var maxF=Math.max(8,Math.min(maxFrames||300,Math.floor((len-N)/hop)+1));
+    var totalFrames=Math.max(1,Math.floor((len-N)/hop)+1);
+    var stride=Math.max(1,Math.floor(totalFrames/maxF));
+    var binCount=N;
+    var keptFrames=Math.floor(totalFrames/stride);
+    if(keptFrames<1)keptFrames=1;
+    var data=new Float32Array(keptFrames*binCount);
+    var frameTimes=new Float32Array(keptFrames);
+    var re=new Float64Array(N),im=new Float64Array(N);
+    var minDb=Infinity,maxDb=-Infinity;
+    var half=N>>1;
+    for(var fi=0;fi<keptFrames;fi++){
+      var start=fi*stride*hop;
+      if(start+N>len)start=len-N;
+      for(var s=0;s<N;s++){re[s]=I[start+s]*win[s];im[s]=Q[start+s]*win[s];}
+      radix2FFT(re,im);
+      var rowOffset=fi*binCount;
+      for(var b=0;b<binCount;b++){
+        var binIdx=(b+half)%N;
+        var mag=Math.sqrt(re[binIdx]*re[binIdx]+im[binIdx]*im[binIdx]);
+        var amp=mag/winSum;
+        var db=20*Math.log10(amp+1e-12);
+        if(db<-160)db=-160;
+        if(db<minDb)minDb=db;
+        if(db>maxDb)maxDb=db;
+        data[rowOffset+b]=db;
+      }
+      frameTimes[fi]=start/sampleRate;
+    }
+    if(!isFinite(minDb))minDb=-120;
+    if(!isFinite(maxDb))maxDb=0;
+    return {
+      data:data,frameTimes:frameTimes,frameCount:keptFrames,binCount:binCount,
+      sampleRate:sampleRate,fftSize:N,hopSize:hop,stride:stride,
+      window:settings.window,minDb:minDb,maxDb:maxDb,
+      durationSec:len/sampleRate,
+      centerFreqHz:isFinite(centerFreqHz)?centerFreqHz:0,
+      isIq:true
+    };
+  }
+
+  function demodulateIqAm(I,Q,sampleRate,opts){
+    var n=I.length;
+    var decim=Math.max(1,Math.floor(sampleRate/48000));
+    var audioRate=sampleRate/decim;
+    var nOut=Math.floor(n/decim);
+    if(nOut<256)throw new Error("IQ capture too short for AM demodulation.");
+    var env=new Float32Array(nOut);
+    var mean=0;
+    for(var i=0;i<nOut;i++){
+      var si=i*decim;
+      env[i]=Math.sqrt(I[si]*I[si]+Q[si]*Q[si]);
+      mean+=env[i];
+    }
+    mean/=nOut;
+    for(var k=0;k<nOut;k++)env[k]-=mean;
+    return computeAudioFftTrace(env,audioRate,opts);
+  }
+
+  function demodulateIqFm(I,Q,sampleRate,opts){
+    var n=I.length;
+    var decim=Math.max(1,Math.floor(sampleRate/48000));
+    var audioRate=sampleRate/decim;
+    var nOut=Math.floor(n/decim);
+    if(nOut<256)throw new Error("IQ capture too short for FM demodulation.");
+    var demod=new Float32Array(nOut);
+    for(var i=1;i<nOut;i++){
+      var si=i*decim,sj=si-decim;
+      var denom=I[si]*I[si]+Q[si]*Q[si];
+      demod[i]=denom<1e-20?0:(Q[si]*I[sj]-I[si]*Q[sj])/denom;
+    }
+    if(nOut>0)demod[0]=nOut>1?demod[1]:0;
+    return computeAudioFftTrace(demod,audioRate,opts);
+  }
+
   function buildIqResult(arrayBuffer,fileName,format,sampleRate,centerFreqHz,opts,extraMeta){
     _fc++;
     var fc=_fc;
@@ -1899,7 +1985,29 @@
         meta["HD Radio Score"]=hd.hdScore+" / 100 · detect "+hs.detection+" · sym "+hs.symmetry+" · mask "+hs.mask+" · level "+hs.level;
       }
     }
-    return {format:"iq",meta:meta,traces:[trace]};
+    var traces=[trace];
+    var amTrace=null;
+    try{
+      var amResult=demodulateIqAm(iq.I,iq.Q,sampleRate,opts);
+      amTrace=makeTrace(prefix+"(AM demod)",fileName,"IQ_AM",fc);
+      amTrace.data=normalizeTraceData(amResult.data);
+      amTrace.units={x:"Hz",y:"dBFS"};
+      amTrace.kind="derived";
+      meta["AM Audio Rate"]={value:Math.round(sampleRate/Math.max(1,Math.floor(sampleRate/48000))),unit:"Hz"};
+    }catch(_){amTrace=null;}
+    if(amTrace)traces.push(amTrace);
+    var fmTrace=null;
+    try{
+      var fmResult=demodulateIqFm(iq.I,iq.Q,sampleRate,opts);
+      fmTrace=makeTrace(prefix+"(FM demod)",fileName,"IQ_FM",fc);
+      fmTrace.data=normalizeTraceData(fmResult.data);
+      fmTrace.units={x:"Hz",y:"dBFS"};
+      fmTrace.kind="derived";
+    }catch(_){fmTrace=null;}
+    if(fmTrace)traces.push(fmTrace);
+    var spectrogram=null;
+    try{spectrogram=computeIqSpectrogram(iq.I,iq.Q,sampleRate,centerFreqHz,opts,300);}catch(_){spectrogram=null;}
+    return {format:"iq",meta:meta,traces:traces,spectrogram:spectrogram};
   }
 
   function parseIqFile(arrayBuffer,fileName,options){
@@ -1974,6 +2082,9 @@
     getSigmfBasename:getSigmfBasename,
     parseIqFile:parseIqFile,
     parseSigmfPair:parseSigmfPair,
-    IQ_DEFAULT_OPTIONS:IQ_DEFAULT_OPTIONS
+    IQ_DEFAULT_OPTIONS:IQ_DEFAULT_OPTIONS,
+    computeIqSpectrogram:computeIqSpectrogram,
+    demodulateIqAm:demodulateIqAm,
+    demodulateIqFm:demodulateIqFm
   };
 })(window);

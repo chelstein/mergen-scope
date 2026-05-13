@@ -150,6 +150,14 @@
     }
     ctx.putImageData(img,0,0);
   }
+  function fmtHz(hz){
+    if(!isFinite(hz))return "?";
+    var a=Math.abs(hz);
+    if(a>=1e9)return (hz/1e9).toFixed(3)+" GHz";
+    if(a>=1e6)return (hz/1e6).toFixed(3)+" MHz";
+    if(a>=1e3)return (hz/1e3).toFixed(1)+" kHz";
+    return hz.toFixed(0)+" Hz";
+  }
   function SpectrogramCanvas(props){
     var spec=props.spectrogram;
     var canvasRef=React.useRef(null);
@@ -159,16 +167,25 @@
     if(!spec||!spec.data||!spec.frameCount||!spec.binCount){
       return h("div",{style:{fontSize:11,color:"var(--muted)",fontStyle:"italic"}},"No spectrogram available.");
     }
-    var topHz=spec.sampleRate?(spec.sampleRate/2):0;
-    var topLabel=topHz>=1e6?(topHz/1e6).toFixed(2)+" MHz":topHz>=1e3?(topHz/1e3).toFixed(1)+" kHz":topHz.toFixed(0)+" Hz";
     var dur=spec.durationSec;
     var durLabel=dur>=1?dur.toFixed(2)+" s":(dur*1000).toFixed(1)+" ms";
-    return h("div",{style:{display:"flex",flexDirection:"column",gap:2}},
-      h("canvas",{ref:canvasRef,style:{width:"100%",height:80,borderRadius:4,border:"1px solid var(--border)",background:"#000",display:"block"},"aria-label":"Spectrogram (frequency vs time)"}),
-      h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:10,fontFamily:"monospace",color:"var(--muted)"}},
-        h("span",null,"0 Hz"),
-        h("span",null,"0 s · "+durLabel),
-        h("span",null,topLabel)
+    var isIq=!!spec.isIq;
+    var cf=isIq&&isFinite(spec.centerFreqHz)?spec.centerFreqHz:0;
+    var bwHz=spec.sampleRate||0;
+    var loHz=isIq?cf-bwHz/2:0;
+    var hiHz=isIq?cf+bwHz/2:bwHz/2;
+    var midHz=(loHz+hiHz)/2;
+    var dbRange="dB range: "+spec.minDb.toFixed(0)+" … "+spec.maxDb.toFixed(0)+" dBFS";
+    return h("div",{style:{display:"flex",flexDirection:"column",gap:3}},
+      h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:10,fontFamily:"monospace",color:"var(--accent)",marginBottom:1}},
+        h("span",null,isIq?"RF Waterfall":"Spectrogram"),
+        h("span",null,dbRange)
+      ),
+      h("canvas",{ref:canvasRef,style:{width:"100%",height:180,borderRadius:4,border:"1px solid var(--border)",background:"#000",display:"block"},"aria-label":"Spectrogram (frequency vs time)"}),
+      h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:10,fontFamily:"monospace",color:"var(--dim)"}},
+        h("span",null,fmtHz(loHz)),
+        h("span",null,fmtHz(midHz)+" · "+durLabel),
+        h("span",null,fmtHz(hiHz))
       )
     );
   }
@@ -1032,8 +1049,8 @@
             });
           }
         }
-        if(f.format==="audio"&&f.spectrogram){
-          items.push(h(Sec,{key:"spec-"+f.id},"Spectrogram"));
+        if((f.format==="audio"||f.format==="iq")&&f.spectrogram){
+          items.push(h(Sec,{key:"spec-"+f.id},f.format==="iq"?"RF Waterfall":"Spectrogram"));
           items.push(h("div",{key:"spec-canvas-"+f.id,style:{padding:"2px 0"}},h(SpectrogramCanvas,{spectrogram:f.spectrogram})));
         }
         if(isTouchstoneFile(f)){
@@ -1282,6 +1299,7 @@
         h(Btn,{soft:true,color:C.tr&&C.tr[4],title:"Save the current workspace state as a portable JSON file.",onClick:p.exportWorkspace||p.saveWorkspace,disabled:!hasData},"Save Workspace"),
         h(Btn,{soft:true,color:C.tr&&C.tr[1],title:"Export raw traces, derived traces, markers, reference lines, current analysis traces, saved analysis results, and Touchstone-backed derived views as JSON.",onClick:p.exportTraceData||p.exportData,disabled:!hasData},"Export JSON"),
         h(Btn,{soft:true,color:(C.tr&&C.tr[5])||C.accent,title:"Export the current chart view as a higher-resolution PNG image.",onClick:p.exportChartPng,disabled:!hasData},"PNG"),
+        p.copyChartPng?h(Btn,{soft:true,color:(C.tr&&C.tr[5])||C.accent,title:"Copy the current chart as a PNG image to the clipboard — paste directly into messages, documents, or social posts.",onClick:p.copyChartPng,disabled:!hasData},"📋 Copy Image"):null,
         h(Btn,{soft:true,color:C.refV,title:"Export the current chart view as a pure-graph SVG image.",onClick:p.exportChartSvg,disabled:!hasData},"SVG"),
         p.exportChartCsv?h(Btn,{soft:true,color:(C.tr&&C.tr[3])||C.accent,title:"Export the active pane's visible traces as a long-format CSV (trace,freq,amp).",onClick:p.exportChartCsv,disabled:!hasData},"CSV"):null,
         p.shareWorkspaceLink?h(Btn,{soft:true,color:C.accent,title:"Build a self-contained share URL with the current workspace state and copy it to the clipboard. Recipients can open the link to load this workspace.",onClick:p.shareWorkspaceLink,disabled:!hasData},"Share Link"):null
