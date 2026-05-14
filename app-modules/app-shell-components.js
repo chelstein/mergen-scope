@@ -207,11 +207,26 @@
     var audioCtxRef=React.useRef(null);
     var sourceRef=React.useRef(null);
     var _ps=React.useState(null),playing=_ps[0],setPlaying=_ps[1];
+    React.useEffect(function(){
+      return function(){
+        if(sourceRef.current){try{sourceRef.current.stop();}catch(_){}}
+        if(audioCtxRef.current){try{audioCtxRef.current.close();}catch(_){}}
+      };
+    },[]);
     if(!pcm)return null;
     var accent=C.accent||"var(--accent)";
     function stop(){
       if(sourceRef.current){try{sourceRef.current.stop();}catch(_){}sourceRef.current=null;}
       setPlaying(null);
+    }
+    function normalizedCopy(samples){
+      var maxAbs=0;
+      for(var i=0;i<samples.length;i++){var a=Math.abs(samples[i]);if(a>maxAbs)maxAbs=a;}
+      if(maxAbs<=1)return samples;
+      var out=new Float32Array(samples.length);
+      var scale=0.95/maxAbs;
+      for(var j=0;j<samples.length;j++)out[j]=samples[j]*scale;
+      return out;
     }
     function play(mode){
       stop();
@@ -225,7 +240,7 @@
         var ctx=audioCtxRef.current;
         if(ctx.state==="suspended")ctx.resume();
         var buf=ctx.createBuffer(1,samples.length,Math.round(rate));
-        buf.copyToChannel(samples,0);
+        buf.copyToChannel(normalizedCopy(samples),0);
         var src=ctx.createBufferSource();
         src.buffer=buf;
         src.connect(ctx.destination);
