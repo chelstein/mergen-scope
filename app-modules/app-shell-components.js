@@ -1352,6 +1352,96 @@
       status.length?h("div",{style:{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",minHeight:18}},status):null
     );
   }
+  function ZtrBrowserPanel(props){
+    var p=props||{};
+    var C=p.C||{};
+    var accent=C.accent||"var(--accent)";
+    var SH=window.SpacesHelpers||null;
+    var _creds=React.useState(function(){
+      try{var s=localStorage.getItem("ztrCreds");return s?JSON.parse(s):{bucket:"ztr",region:"sfo3",accessKey:"",secretKey:""};}catch(_){return {bucket:"ztr",region:"sfo3",accessKey:"",secretKey:""};}
+    }),creds=_creds[0],setCredsRaw=_creds[1];
+    var _prefix=React.useState(""),prefix=_prefix[0],setPrefix=_prefix[1];
+    var _listing=React.useState(null),listing=_listing[0],setListing=_listing[1];
+    var _busy=React.useState(false),busy=_busy[0],setBusy=_busy[1];
+    var _err=React.useState(null),zErr=_err[0],setZErr=_err[1];
+    var _loading=React.useState(null),loadingKey=_loading[0],setLoadingKey=_loading[1];
+    function setCreds(next){setCredsRaw(next);try{localStorage.setItem("ztrCreds",JSON.stringify(next));}catch(_){}}
+    function browse(pref){
+      if(!SH){setZErr("SpacesHelpers not loaded.");return;}
+      if(!creds.accessKey||!creds.secretKey){setZErr("Enter your Spaces access key and secret key.");return;}
+      setBusy(true);setZErr(null);setListing(null);
+      SH.listObjects(creds,pref,"/",null).then(function(res){
+        setListing(res);setPrefix(pref);setBusy(false);
+      }).catch(function(e){setZErr(String(e&&e.message||e));setBusy(false);});
+    }
+    function loadFile(key){
+      if(!SH||!p.onZtrLoad)return;
+      setLoadingKey(key);setZErr(null);
+      var isSigmfMeta=/\.sigmf-meta$/i.test(key);
+      var dataKey=isSigmfMeta?key.replace(/\.sigmf-meta$/i,".sigmf-data"):null;
+      var fetches=[SH.fetchFile(creds,key)];
+      if(dataKey)fetches.push(SH.fetchFile(creds,dataKey));
+      Promise.all(fetches).then(function(bufs){
+        var fileName=key.split("/").pop();
+        if(isSigmfMeta&&bufs[1]){
+          p.onZtrLoad([
+            {name:fileName,buffer:bufs[0]},
+            {name:dataKey.split("/").pop(),buffer:bufs[1]}
+          ]);
+        }else{
+          p.onZtrLoad([{name:fileName,buffer:bufs[0]}]);
+        }
+        setLoadingKey(null);
+      }).catch(function(e){setZErr(String(e&&e.message||e));setLoadingKey(null);});
+    }
+    var inStyle={fontSize:11,padding:"3px 6px",background:"var(--bg)",color:"var(--text)",border:"1px solid var(--border)",borderRadius:4,fontFamily:"monospace",width:"100%",boxSizing:"border-box"};
+    var breadcrumbs=prefix?prefix.split("/").filter(Boolean):[];
+    var isAudioOrIq=function(k){return /\.(wav|mp3|flac|ogg|cfile|cf32|cs16|cu8|sigmf-meta|sigmf-data|bin|dat|iq)$/i.test(k);};
+    return h("div",{style:{border:"1px solid var(--border)",borderRadius:6,padding:"8px",display:"flex",flexDirection:"column",gap:6,background:"var(--card)"}},
+      h("div",{style:{fontSize:10,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:accent}},"ZTR Capture Library"),
+      h("div",{style:{display:"grid",gridTemplateColumns:"auto 1fr",gap:"4px 8px",fontSize:11,alignItems:"center"}},
+        h("label",{style:{color:"var(--muted)",whiteSpace:"nowrap"}},"Access Key"),
+        h("input",{type:"text",placeholder:"DO00...",value:creds.accessKey,onChange:function(ev){setCreds(Object.assign({},creds,{accessKey:ev.target.value}));},style:inStyle}),
+        h("label",{style:{color:"var(--muted)",whiteSpace:"nowrap"}},"Secret Key"),
+        h("input",{type:"password",placeholder:"••••••••",value:creds.secretKey,onChange:function(ev){setCreds(Object.assign({},creds,{secretKey:ev.target.value}));},style:inStyle}),
+        h("label",{style:{color:"var(--muted)"}},"Bucket"),
+        h("input",{type:"text",value:creds.bucket,onChange:function(ev){setCreds(Object.assign({},creds,{bucket:ev.target.value}));},style:inStyle}),
+        h("label",{style:{color:"var(--muted)"}},"Region"),
+        h("input",{type:"text",value:creds.region,onChange:function(ev){setCreds(Object.assign({},creds,{region:ev.target.value}));},style:inStyle})
+      ),
+      h("button",{disabled:busy,onClick:function(){browse("");},style:{padding:"5px 10px",border:"1px solid "+accent,borderRadius:4,background:accent+"14",color:accent,cursor:busy?"wait":"pointer",fontSize:11,fontWeight:700}},busy?"Connecting…":"Browse Captures"),
+      zErr?h("div",{style:{fontSize:10,color:"#f55",wordBreak:"break-all"}},zErr):null,
+      listing?h("div",{style:{display:"flex",flexDirection:"column",gap:2}},
+        h("div",{style:{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap",fontSize:11,marginBottom:2}},
+          h("span",{style:{color:"var(--muted)",cursor:"pointer"},onClick:function(){browse("");}},creds.bucket+"/"),
+          breadcrumbs.map(function(seg,i){
+            var pref=breadcrumbs.slice(0,i+1).join("/")+"/";
+            return h("span",{key:pref,style:{color:accent,cursor:"pointer"},onClick:function(){browse(pref);}},seg+"/");
+          })
+        ),
+        listing.prefixes.map(function(pref){
+          var label=pref.slice(prefix.length).replace(/\/$/,"");
+          return h("div",{key:pref,style:{display:"flex",alignItems:"center",gap:4,padding:"2px 4px",cursor:"pointer",borderRadius:3,fontSize:11},onClick:function(){browse(pref);}},
+            h("span",{style:{color:"var(--muted)"}},"📁"),
+            h("span",{style:{color:"var(--text)",fontFamily:"monospace"}},label)
+          );
+        }),
+        listing.contents.filter(function(f){return f.key!==prefix;}).map(function(f){
+          var label=f.key.slice(prefix.length);
+          var canLoad=isAudioOrIq(f.key);
+          var isLoading=loadingKey===f.key;
+          return h("div",{key:f.key,style:{display:"flex",alignItems:"center",gap:4,padding:"2px 4px",fontSize:11}},
+            h("span",{style:{flex:1,fontFamily:"monospace",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:canLoad?"var(--text)":"var(--muted)"}},label),
+            h("span",{style:{color:"var(--dim)",whiteSpace:"nowrap",fontSize:10}},SH.fmtSize(f.size)),
+            canLoad?h("button",{disabled:!!loadingKey,onClick:function(){loadFile(f.key);},style:{padding:"2px 7px",border:"1px solid "+accent,borderRadius:3,background:isLoading?accent+"22":"transparent",color:isLoading?"var(--muted)":accent,cursor:loadingKey?"wait":"pointer",fontSize:10,fontWeight:600,whiteSpace:"nowrap"}},isLoading?"…":"Load"):null
+          );
+        }),
+        listing.truncated?h("div",{style:{fontSize:10,color:"var(--muted)",textAlign:"center",padding:"4px 0"}},"Showing first 500 — refine by navigating into a folder"):null
+      ):null,
+      !listing&&!busy?h("div",{style:{fontSize:10,color:"var(--muted)",lineHeight:1.5}},"CORS required: allow origin https://chelstein.github.io with GET/HEAD on the Spaces bucket."):null
+    );
+  }
+
   function ImportExportPanel(props){
     var p=withAppProps(props);
     if(typeof p.render==="function")return p.render();
@@ -1478,6 +1568,7 @@
           )
         ):null
       ):null,
+      p.onZtrLoad?h(ZtrBrowserPanel,{key:"ztr-browser",C:C,onZtrLoad:p.onZtrLoad}):null,
       h("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
         h("button",{className:"clr-btn",title:"Remove all imported files, traces, markers, and analysis results from the current workspace.",onClick:function(){if(hasData&&window.confirm("Clear all files and traces?")&&p.clearAllFiles)p.clearAllFiles();},disabled:!hasData,style:{background:"transparent",border:"1px solid var(--border)",color:"var(--muted)",borderRadius:6,padding:"6px 10px",cursor:hasData?"pointer":"not-allowed",fontSize:12,fontWeight:500,whiteSpace:"nowrap",lineHeight:"1.4",opacity:hasData?1:0.45,width:"100%"}},"Clear Workspace")
       ),
